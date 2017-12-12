@@ -10,6 +10,9 @@ project(DR_plan)
 include(cmake/PrecompiledHeader.cmake)
 
 include_directories(Splinter/include)
+link_directories(Splinter/x86-64/Debug)
+
+include_directories(src)
 
 set(SOURCE_FILES
         src/Enumeration.h
@@ -41,4 +44,4 @@ set_target_properties(DR_plan PROPERTIES
     CXX_EXTENSIONS OFF
 )
 
-add_precompiled_header(DR_plan src/stdafx.h)
+add_precompiled_header(DR_plan src/stdafx.h SOURCE_CXX src/stdafx.cpp FORCEINCLUDE)
