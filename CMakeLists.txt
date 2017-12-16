@@ -1,16 +1,13 @@
 cmake_minimum_required(VERSION 3.5)
-set(CMAKE_CXX_COMPILER"clang++")
+# set(CMAKE_CXX_COMPILER"clang++")
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-add_compile_options(-std=c++11)
 
 project(DR_plan)
 
-include(cmake/PrecompiledHeader.cmake)
-
-include_directories(Splinter/include)
-link_directories(Splinter/x86-64/Debug)
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+include(cotire)
 
 include_directories(src)
 
@@ -28,20 +25,20 @@ set(SOURCE_FILES
         src/Tree.cpp
         src/Tree.h
         src/Factory.cpp
-        src/Factory.h)
+        src/Factory.h
+        src/stdafx.cpp
+        src/stdafx.h)
 
-set(pch_source src/stdafx.cpp)
+add_executable(DR_plan ${SOURCE_FILES})
 
 find_package(GSL REQUIRED)
 include_directories(${GSL_INCLUDE_DIRS})
 link_directories(${GSL_LIBRARY_DIRS})
+target_link_libraries(DR_plan GSL::gsl GSL::gslcblas)
 
-add_executable(DR_plan ${SOURCE_FILES} src/stdafx.h ${pch_source})
+set(SPLINTER_LIB CACHE FILEPATH "Path to Splinter library")
+include_directories(${CMAKE_SOURCE_DIR}/Splinter/include)
+target_link_libraries(DR_plan ${SPLINTER_LIB})
 
-set_target_properties(DR_plan PROPERTIES
-    CXX_STANDARD 11
-    CXX_STANDARD_REQUIRED ON
-    CXX_EXTENSIONS OFF
-)
-
-add_precompiled_header(DR_plan src/stdafx.h SOURCE_CXX src/stdafx.cpp FORCEINCLUDE)
+set_target_properties(DR_plan PROPERTIES COTIRE_CXX_PREFIX_HEADER_INIT "${CMAKE_SOURCE_DIR}/src/stdafx.h")
+cotire(DR_plan)
