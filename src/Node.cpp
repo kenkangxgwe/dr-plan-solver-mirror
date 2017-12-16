@@ -1,14 +1,16 @@
 #include "stdafx.h"
 #include "Node.h"
 
-namespace DRPlan {
+namespace DRPlan
+{
 
 Node::Node()
 {
 }
 
-Node::Node(Polynomial poly, std::vector<int> freeVars, int solvedVar)
-	:targetPoly(poly), freeVars(freeVars), targetVar(solvedVar) {
+Node::Node(Polynomial poly, std::vector<int> freeVars, int targetVar)
+	:targetPoly(poly), freeVars(freeVars), targetVar(targetVar)
+{
 }
 
 Node::~Node()
@@ -18,9 +20,9 @@ Node::~Node()
 	}
 }
 
-Polynomial Node::curryPoly(std::unordered_map<int, Polynomial>& solutionList)
+Polynomial Node::curryPoly(const std::unordered_map<int, Polynomial>& solutionList) const
 {
-	std::unordered_set<int> activeSet({ targetVar }); ///< The set that stores the indices of all active variables (free variables and target variable).
+	std::unordered_set<int> activeSet({targetVar}); ///< The set that stores the indices of all active variables (free variables and target variable).
 	activeSet.insert(freeVars.begin(), freeVars.end());
 
 	std::unordered_set<int> solvedVars; ///< The set that stores the indices of all previously solved variables.
@@ -32,11 +34,11 @@ Polynomial Node::curryPoly(std::unordered_map<int, Polynomial>& solutionList)
 
 	return Polynomial([&, solvedVars](std::unordered_map<int, double> valMap) -> double {
 		/**
-		 * Given the values of active variables, using the solutionList to calculated 
+		 * Given the values of active variables, using the solutionList to calculated
 		 * the values of solved variables and insert them into the value map.
 		 */
 		for(auto &solvedVar : solvedVars) {
-			valMap.emplace(solvedVar, solutionList[solvedVar].evaluate(valMap));
+			valMap[solvedVar] = solutionList.at(solvedVar).evaluate(valMap);
 		}
 		return targetPoly.evaluate(valMap);
 	}, activeSet);

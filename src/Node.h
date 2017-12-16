@@ -32,7 +32,7 @@ private:
 	 * @param solutionList a map that stores substitute functions between variables.
 	 * @return The curried polynomial
 	 */
-	Polynomial curryPoly(std::unordered_map<int, Polynomial>&);
+	Polynomial curryPoly(const std::unordered_map<int, Polynomial>&) const;
 };
 
 }  // namespace DRPlan

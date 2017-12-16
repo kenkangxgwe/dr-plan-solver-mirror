@@ -49,7 +49,7 @@ Polynomial::Polynomial(std::function<double(std::unordered_map<int, double>)> ex
 Polynomial::~Polynomial()
 = default;
 
-double Polynomial::evaluate(std::unordered_map<int, double> valMap)
+double Polynomial::evaluate(std::unordered_map<int, double> valMap) const
 {
 	return expression(valMap);
 }
@@ -63,12 +63,12 @@ void Polynomial::setVars(std::unordered_set<int> indexSet)
 	}
 }
 
-std::vector<int> Polynomial::getVarList()
+std::vector<int> Polynomial::getVarList() const
 {
 	return indexList;
 }
 
-std::unordered_set<int> Polynomial::getVarSet()
+std::unordered_set<int> Polynomial::getVarSet() const
 {
 	return indexSet;
 }

@@ -37,7 +37,7 @@ private:
 	 * @param solvedVar the index of the target variable.
 	 * @return A list of representations of the target variable.
 	 */
-    std::vector<Polynomial> interpolate(Polynomial, int);
+    std::vector<Polynomial> interpolate(Polynomial, int) const;
 
 	/**
 	 * Uses the free variables to replace the target variable wherever it occurs in the previous solutionMap.
@@ -46,7 +46,7 @@ private:
 	 * @param targetVar the index of the target variable.
 	 * @return the new solutionMap with no target variable appears.
 	 */
-	std::unordered_map<int, Polynomial> updateSolution(std::unordered_map<int, Polynomial> &, Polynomial, int);
+	std::unordered_map<int, Polynomial> updateSolution(const std::unordered_map<int, Polynomial>&, const Polynomial&, int) const;
 };
 
 }

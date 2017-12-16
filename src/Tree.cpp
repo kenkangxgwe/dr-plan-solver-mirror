@@ -10,14 +10,17 @@ namespace DRPlan {
  Constructs a DR-plan by reading the specified file and generates node.
  \param DRPlanPath the path of the DR-plan file
  */
-Tree::Tree() {
+Tree::Tree()
+{
 }
 
-Tree::Tree(DRPlan::Node *root, int sampleNum, std::unordered_map<int, std::pair<double, double>> intervalList) 
-	: root(root), sampleNum(sampleNum), intervalList(intervalList) {
+Tree::Tree(DRPlan::Node *root, int sampleNum, std::unordered_map<int, std::pair<double, double>> intervalList)
+	: root(root), sampleNum(sampleNum), intervalList(intervalList)
+{
 }
 
-Tree::~Tree() {
+Tree::~Tree()
+{
 	delete root;
 }
 
@@ -25,46 +28,59 @@ Tree::~Tree() {
   Calls the root node to recursively solve the constraint polynomials.
   \return the list of all possible solutions of all variables
  */
-std::vector<std::unordered_map<int, double>> Tree::solveTree() {
+std::vector<std::unordered_map<int, double>> Tree::solveTree()
+{
 	solveNode(root);
-	for(auto& solutionList : solutionMapList) {
+	for(const auto& solutionList : solutionMapList) {
 		std::unordered_map<int, double> finalSolutionList;
-		for(auto &solution : solutionList) {
-			finalSolutionList.emplace(solution.first, solution.second.evaluate(std::unordered_map<int, double>()));
+		for(const auto &solution : solutionList) {
+			finalSolutionList[solution.first] = solution.second.evaluate({});
 		}
 		finalSolutionLists.push_back(finalSolutionList);
 	}
 	return finalSolutionLists;
 }
 
-void Tree::solveNode(Node *curNode) {
-
+void Tree::solveNode(Node *curNode)
+{
+	/**
+	 * If current node is a variable node, the index of target variable should be -1.
+	 * We simply add current pair of variable and its constant polynomial into every solution map.
+	 */
 	if(curNode->targetVar == -1) {
+		/**
+		 * There is no solution map.
+		 */
 		if(solutionMapList.empty()) {
 			solutionMapList.push_back(std::unordered_map<int, Polynomial>());
 		}
-
+		/**
+		 * The variable is not present in existing solution map.
+		 */
 		if(solutionMapList[0].count(curNode->targetVar) == 0) {
 			for(auto & solutionList : solutionMapList) {
-				solutionList.emplace(curNode->freeVars[0], curNode->targetPoly);
+				solutionList[curNode->freeVars[0]] = curNode->targetPoly;
 			}
 		}
 		return;
 	}
-
+	/**
+	 * Solve every sub node.
+	 */
 	for(auto &subNode : curNode->subNodes) {
 		solveNode(subNode);
 	}
-
-	std::vector<std::unordered_map<int, Polynomial>> newSolutionLists;
+	/**
+	 * Solve the current node based on every possible solution.
+	 */
 	std::cout << std::endl << "Solving x_" << curNode->targetVar << "(";
 	for(int i = 0; i < curNode->freeVars.size(); i++) {
 		if(i != 0) std::cout << ", ";
 		std::cout << "x_" << curNode->freeVars[i];
 	}
 	std::cout << "):" << std::endl;
-
-	for(auto &solutionList : solutionMapList) {
+	std::vector<std::unordered_map<int, Polynomial>> newSolutionLists;
+	for(const auto &solutionList : solutionMapList) {
 		Polynomial curriedPoly = curNode->curryPoly(solutionList);
 		std::vector<Polynomial> interPolys = interpolate(curriedPoly, curNode->targetVar);
 		std::cout << "found " << interPolys.size() << " solution(s)." << std::endl;
@@ -74,7 +90,7 @@ void Tree::solveNode(Node *curNode) {
 			//double end = -0.32f;
 			//for(int i = 0; i <= sampleNum; i++) {
 			//	std::unordered_map<int, double> valMap;
-			//	valMap.emplace(0, begin + (double)i * (end - begin) / (double)sampleNum);
+			//	valMap[0] = begin + (double)i * (end - begin) / (double)sampleNum;
 			//	std::cout << "x_0(" << valMap[0] << ") = ";
 			//	std::cout << interPoly.evaluate(valMap) << std::endl;
 			//	std::cout << newSolutionLists.back().at(curNode->targetVar).evaluate(valMap) << std::endl;
@@ -85,49 +101,49 @@ void Tree::solveNode(Node *curNode) {
 	return;
 }
 
-std::vector<Polynomial> Tree::interpolate(Polynomial poly, int targetVar) {
+std::vector<Polynomial> Tree::interpolate(Polynomial poly, int targetVar) const
+{
 	std::unordered_set<int> freeVarSet = poly.getVarSet();
 	freeVarSet.erase(targetVar);
-
 	// The free degree should be no more than 5.
-	assert(freeVarSet.size() <= 5); 
-
+	assert(freeVarSet.size() <= 5);
+	/**
+	 * Compute the sample values of all free variables.
+	 */
 	std::unordered_map<int, std::vector<double>> sampleList;
-	for(auto &freeVar : freeVarSet) {
-		sampleList.emplace(freeVar, std::vector<double>());
-		double begin = intervalList[freeVar].first;
-		double end = intervalList[freeVar].second;
+	for(const auto &freeVar : freeVarSet) {
+		// sampleList[freeVar] = std::vector<double>();
+		double begin = intervalList.at(freeVar).first;
+		double end = intervalList.at(freeVar).second;
 		for(int i = 0; i <= sampleNum; i++) {
 			sampleList[freeVar].push_back(begin + (double)i * (end - begin) / (double)sampleNum);
 		}
 	}
-
-
+	/**
+	 * For each combination of the free variable values,
+	 * interpolate the sample values of target variable against the values of polynomial,
+	 * and find the root of the target variable.
+	 */
 	std::vector<std::unordered_map<int, double>> freeValsList;
 	std::vector<std::vector<double>> rootsList;
-
-	double targetBegin = intervalList[targetVar].first;
-	double targetEnd = intervalList[targetVar].second;
-
-	std::function<bool(std::unordered_map<int, double>)> interRoot =
+	double targetBegin = intervalList.at(targetVar).first;
+	double targetEnd = intervalList.at(targetVar).second;
+	std::function<bool(std::unordered_map<int, double>)> findRoot =
 		[&](std::unordered_map<int, double> freeVals) -> bool {
 		std::vector<double> xList, yList;
 		interpolant slicedInter;
 		for(int i = 0; i <= sampleNum; i++) {
 			std::unordered_map<int, double> valMap(freeVals);
-			valMap.emplace(targetVar,
-				targetBegin + (double)i * (targetEnd - targetBegin) / (double)sampleNum);
+			valMap[targetVar] = targetBegin + (double)i * (targetEnd - targetBegin) / (double)sampleNum;
 			try {
 				double polyRes = poly.evaluate(valMap);
 				xList.push_back(valMap[targetVar]);
 				yList.push_back(polyRes);
-			}
-			catch (std::exception e) {
+			} catch(std::exception e) {
 				continue;
 			}
 		}
 		slicedInter.set_data(xList, yList);
-
 		std::vector<double> roots = slicedInter.find_roots();
 		if(roots.size()) {
 			freeValsList.push_back(freeVals);
@@ -136,34 +152,48 @@ std::vector<Polynomial> Tree::interpolate(Polynomial poly, int targetVar) {
 		}
 		return false;
 	};
-
+	/**
+	 * If there is no samples for free variable, either there is no free variables,
+	 * or there is no interval available for all free variables,
+	 * interpolate and find root with empty map.
+	 * Otherwise, enumerate all possible combinations of the sample values
+	 * and interpolate for every combination.
+	 */
 	if(freeVarSet.empty()) {
-		interRoot(std::unordered_map<int, double>());
-	}
-	else {
+		findRoot({});
+	} else {
 		Enumeration<double, int> enumFree = Enumeration<double, int>(sampleList, freeVarSet);
-		enumFree.applyFunc(interRoot);
+		enumFree.applyFunc(findRoot);
 	}
-
+	/**
+	 * Returns empty root list if there is no root everywhere.
+	 * Otherwise enumerate all possible combinations of the roots.
+	 */
 	if(rootsList.empty()) {
 		return std::vector<Polynomial>();
 	}
-
 	Enumeration<double> rootsEnum(rootsList);
-
 	if(freeVarSet.empty()) {
-		std::function<Polynomial(std::vector<double>)> constProjFunc =
-			[](std::vector<double> valList) -> Polynomial {
-			return Polynomial::constFunc(valList[0]);
+		/**
+		* Since there is no sample values for free variables,
+		* there is only one root in each rootList.
+		*/
+		std::function<Polynomial(std::vector<double>)> constRoot =
+			[](std::vector<double> rootList) -> Polynomial {
+			return Polynomial::constFunc(rootList.front());
 		};
-		return rootsEnum.applyFunc(constProjFunc);
-	}
-	else {
-		std::function<Polynomial(std::vector<double>)> interFunc =
+		return rootsEnum.applyFunc(constRoot);
+	} else {
+		std::function<Polynomial(std::vector<double>)> interRoot =
 			[&](std::vector<double> rootList) -> Polynomial {
-			SPLINTER::DataTable dataTable;
+			SPLINTER::DataTable dataTable; ///< Use SPLINTER to generate multivariant interpolant.
 			for(int i = 0; i < rootList.size(); i++) {
 				std::vector<double> freeValList;
+				/**
+				 * Note that the order of iteration will not be changed
+				 * as long as the set is not changed or re-hashed.
+				 * @see: https://stackoverflow.com/questions/36242103/is-order-of-iteration-over-the-elements-of-stdunordered-set-guaranteed-to-be-a
+				 */
 				for(auto &freeVarIndex : freeVarSet) {
 					freeValList.push_back(freeValsList[i][freeVarIndex]);
 				}
@@ -178,20 +208,21 @@ std::vector<Polynomial> Tree::interpolate(Polynomial poly, int targetVar) {
 				return bspline.eval(valList);
 			}, freeVarSet);
 		};
-		return rootsEnum.applyFunc(interFunc);
+		return rootsEnum.applyFunc(interRoot);
 	}
 }
 
-std::unordered_map<int, Polynomial> Tree::updateSolution(std::unordered_map<int, Polynomial> &solutionMap, Polynomial reps, int targetVar) {
+std::unordered_map<int, Polynomial> Tree::updateSolution(const std::unordered_map<int, Polynomial> &solutionMap, const Polynomial &reps, int targetVar) const
+{
 	std::unordered_map<int, Polynomial> newSolutionList(solutionMap);
 	newSolutionList[targetVar] = reps;
-	for(auto &kvPair : solutionMap) {
+	for(const auto &kvPair : solutionMap) {
 		if(kvPair.first != targetVar && kvPair.second.getVarSet().count(targetVar)) {
 			Polynomial *newPoly = new Polynomial(reps);
 			Polynomial *oldPoly = new Polynomial(kvPair.second);
 			newSolutionList[kvPair.first] = Polynomial([=](std::unordered_map<int, double> valMap) -> double {
 				double test = newPoly->evaluate(valMap);
-				valMap.emplace(targetVar, newPoly->evaluate(valMap));
+				valMap[targetVar] = newPoly->evaluate(valMap);
 				return oldPoly->evaluate(valMap);
 			}, newPoly->getVarSet());
 		}

@@ -26,12 +26,12 @@ int main()
 
 	vector<Polynomial> polyList;
 
-	polyList.push_back(Polynomial([](unordered_map<int, double> &valList) -> double {
+	polyList.push_back(Polynomial([](unordered_map<int, double> valList) -> double {
 		return pow(valList[0], 2) + pow(valList[1], 2) - 1.0;
 		//return pow(valList[0], 3) + pow(valList[1], 3);
 		//return valList[0] + valList[1];
 	}, { 0, 1 }));
-	polyList.push_back(Polynomial([](unordered_map<int, double> &valList) -> double {
+	polyList.push_back(Polynomial([](unordered_map<int, double> valList) -> double {
 		return pow(valList[0] - 0.5, 2) + pow(valList[1] - 0.5, 2) - 1.0;
 		//return pow(valList[0], 3) - pow(valList[1], 3);
 		//return valList[0] - valList[1] + 0.1;;
