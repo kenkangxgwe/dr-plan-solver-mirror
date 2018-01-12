@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "Tree.h"
 #include "Enumeration.h"
+#include "RootFinder.h"
 #include "bspline.h"
 #include "bsplinebuilder.h"
 
@@ -130,21 +131,19 @@ std::vector<Polynomial> Tree::interpolate(Polynomial poly, int targetVar) const
 	double targetEnd = intervalList.at(targetVar).second;
 	std::function<bool(std::unordered_map<int, double>)> findRoot =
 		[&](std::unordered_map<int, double> freeVals) -> bool {
-		std::vector<double> xList, yList;
-		interpolant slicedInter;
+        SPLINTER::DataTable dataTable;
 		for(int i = 0; i <= sampleNum; i++) {
 			std::unordered_map<int, double> valMap(freeVals);
 			valMap[targetVar] = targetBegin + (double)i * (targetEnd - targetBegin) / (double)sampleNum;
 			try {
 				double polyRes = poly.evaluate(valMap);
-				xList.push_back(valMap[targetVar]);
-				yList.push_back(polyRes);
+                dataTable.addSample(valMap[targetVar],polyRes);
 			} catch(std::exception e) {
 				continue;
 			}
 		}
-		slicedInter.set_data(xList, yList);
-		std::vector<double> roots = slicedInter.find_roots();
+        SPLINTER::BSpline slicedInter = SPLINTER::BSpline::Builder(dataTable).degree(3).build();
+		std::vector<double> roots = RootFinder::findZeros(slicedInter, 3);
 		if(roots.size()) {
 			freeValsList.push_back(freeVals);
 			rootsList.push_back(roots);
@@ -200,6 +199,8 @@ std::vector<Polynomial> Tree::interpolate(Polynomial poly, int targetVar) const
 				dataTable.addSample(freeValList, rootList[i]);
 			}
 			SPLINTER::BSpline bspline = SPLINTER::BSpline::Builder(dataTable).degree(3).build();
+            auto x = bspline.getControlPoints();
+            std::cout << x << std::endl;
 			return Polynomial([=](std::unordered_map<int, double> valMap) -> double {
 				std::vector<double> valList;
 				for(auto &varIndex : freeVarSet) {

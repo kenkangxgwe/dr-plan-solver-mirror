@@ -1,10 +1,8 @@
 cmake_minimum_required(VERSION 3.5)
+project(DR_plan)
+
 # set(CMAKE_CXX_COMPILER"clang++")
 set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-project(DR_plan)
 
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 include(cotire)
@@ -13,8 +11,8 @@ include_directories(src)
 
 set(SOURCE_FILES
         src/Enumeration.h
-        src/interpolation.cpp
-        src/interpolation.hpp
+        src/RootFinder.cpp
+        src/RootFinder.h
         src/main.cpp
         src/Node.cpp
         src/Node.h
@@ -27,7 +25,7 @@ set(SOURCE_FILES
         src/Factory.cpp
         src/Factory.h
         src/stdafx.cpp
-        src/stdafx.h)
+        src/stdafx.h src/RootFinder.cpp src/RootFinder.h)
 
 add_executable(DR_plan ${SOURCE_FILES})
 

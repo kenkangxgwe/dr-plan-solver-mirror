@@ -2,7 +2,6 @@
 
 #include "stdafx.h"
 #include "Polynomial.hpp"
-#include "interpolation.hpp"
 
 /**
  * The DR-plan Node class.
