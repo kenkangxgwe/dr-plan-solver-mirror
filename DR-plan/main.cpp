@@ -6,7 +6,8 @@
 #include "Factory.h"
 #include "Tree.h"
 #include "Node.h"
-#include "Polynomial.hpp"
+#include "BlackBox.hpp"
+//#include "TwoTree.h"
 
 using namespace std;
 
@@ -20,7 +21,11 @@ using namespace std;
 
 int main()
 {
-	unordered_map<int, double> valMap;
+
+//	std::ifstream dotFile("zig-zag_graph.dot");
+//	TwoTree tt(dotFile);
+
+	unordered_map<unsigned, double> valMap;
 	valMap.emplace(0, -0.411438);
 	valMap.emplace(1, 0.911438);
 
@@ -53,7 +58,7 @@ int main()
 	cout << endl;
 
 	// intervalList for two circles
-	unordered_map<int, pair<double, double>> intervalList;
+	unordered_map<unsigned, pair<double, double>> intervalList;
 	intervalList.emplace(0, pair<double, double>(-0.5, -0.3));
 	intervalList.emplace(1, pair<double, double>(0.8, 1.1));
 
@@ -64,10 +69,10 @@ int main()
 
 	// A simple DR-plan Factory.
 	// solve x1 first, and then x0.
-    DRPlan::Factory factory(10, intervalList);
+    DRPlan::Factory<DRPlan::Node> factory(10, intervalList);
     DRPlan::Node* polyNode0 = factory.createNode(polyList[0], {}, 0);
     DRPlan::Node* polyNode1 = factory.createNode(polyList[1], {0}, 1);
-	DRPlan::Tree* tree0 = factory.createTree(polyNode0);
+	DRPlan::Tree<DRPlan::Node>* tree0 = factory.createTree(polyNode0);
     factory.appendNode(polyNode0, polyNode1);
 	DRPlan::Node* varNode0 = factory.createVar(0);
 	DRPlan::Node* varNode1 = factory.createVar(1);
@@ -87,7 +92,7 @@ int main()
 	// solve x0 first, and then the x1.
     DRPlan::Node* polyNode2 = factory.createNode(polyList[0], {}, 1);
     DRPlan::Node* polyNode3 = factory.createNode(polyList[1], {1}, 0);
-	DRPlan::Tree* tree1 = factory.createTree(polyNode2);
+	DRPlan::Tree<DRPlan::Node>* tree1 = factory.createTree(polyNode2);
     factory.appendNode(polyNode2, polyNode3);
 	DRPlan::Node* varNode2 = factory.createVar(0);
 	DRPlan::Node* varNode3 = factory.createVar(1);

@@ -1,5 +1,5 @@
 #pragma once
-#include "stdafx.h"
+#include <vector>
 
 /**
  The Enumeration class is a helper class to

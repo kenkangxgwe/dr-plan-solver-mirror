@@ -3,3 +3,4 @@
 *build*/
 CMakeSettings.json
 DRplanSolver
+deprecated/*
