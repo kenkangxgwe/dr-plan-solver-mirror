@@ -6,12 +6,15 @@
 #pragma once
 
 #include <iostream>
+#include <fstream>
 #include <vector>
 #include <string>
 #include <utility>
 #include <unordered_set>
 #include <unordered_map>
+#include <functional>
 #include <algorithm>
+#include <ctime>
 #include <boost/graph/graph_utility.hpp>
 #include <boost/graph/graphviz.hpp>
 #include <boost/graph/copy.hpp>

@@ -6,7 +6,7 @@
  construct Cartesian product from a list of vectors.
 */
 
-template <typename V, typename K = void>
+template <typename V>
 class EnumerationBase
 {
 public:
@@ -15,33 +15,33 @@ public:
 
 	public:
 		Enumerator(EnumerationBase* enumeration)
+        :sizeList(enumeration->sizeList)
 		{
-			sizeList = &(enumeration->sizeList);
 		};
 		~Enumerator() {};
 
-		int getIndex(int index)
+		unsigned getIndex(unsigned index)
 		{
 			return indexList[index];
 		};
 
 		void begin()
 		{
-			for(int i = 0; i < sizeList->size(); i++) {
+			for(unsigned i = 0; i < sizeList.size(); i++) {
 				indexList.push_back(0);
 			}
 		};
 
 		void end()
 		{
-			for(int i = 0; i < sizeList->size(); i++) {
-				indexList.push_back(sizeList->at(i) - 1);
+			for(unsigned i = 0; i < sizeList.size(); i++) {
+				indexList.push_back(sizeList.at(i) - 1);
 			}
 		};
 
 		bool operator == (Enumerator that)
 		{
-			for(int i = 0; i < indexList.size(); i++) {
+			for(unsigned i = 0; i < indexList.size(); i++) {
 				if(indexList[i] != that.indexList[i]) {
 					return false;
 				}
@@ -56,7 +56,7 @@ public:
 
 		void operator ++ () {
 			for(int i = indexList.size() - 1; i >= 0; i--) {
-				if(indexList[i] == sizeList->at(i) - 1) {
+				if(indexList[i] == sizeList.at(i) - 1) {
 					indexList[i] = 0;
 				}
 				else {
@@ -70,7 +70,7 @@ public:
 		{
 			for(int i = indexList.size() - 1; i >= 0; i--) {
 				if(indexList[i] == 0) {
-					indexList[i] = sizeList->at(i) - 1;
+					indexList[i] = sizeList.at(i) - 1;
 				}
 				else {
 					indexList[i]--;
@@ -79,10 +79,10 @@ public:
 			}
 		};
 
-	private:
-		std::vector<int> indexList;
-		std::vector<int> *sizeList;
-	};
+    private:
+		std::vector<unsigned> indexList;
+		std::vector<unsigned> &sizeList;
+    };
 
 	EnumerationBase() {};
 	~EnumerationBase() {};
@@ -100,12 +100,12 @@ public:
 	};
 
 protected:
-	std::vector<int> sizeList;
+	std::vector<unsigned> sizeList;
 	std::vector<std::vector<V>> vectorList;
 };
 
-template <typename V, typename K = void>
-class Enumeration : public EnumerationBase<V, K>
+template <typename K = void, typename V = double>
+class Enumeration : public EnumerationBase<V>
 {
 public:
 
@@ -138,10 +138,10 @@ public:
 		}
 	};
 
-	std::unordered_map<K, V> at(typename Enumeration<V, K>::Enumerator enumer)
+	std::unordered_map<K, V> at(typename Enumeration<K, V>::Enumerator enumer)
 	{
 		std::unordered_map<K, V> result;
-		for(int i = 0; i < this->vectorList.size(); i++) {
+		for(unsigned i = 0; i < this->vectorList.size(); i++) {
 			result.emplace(this->keyList[i], this->vectorList[i][enumer.getIndex(i)]);
 		}
 		return result;
@@ -157,7 +157,7 @@ public:
 	std::vector<R> applyFunc(std::function<R(std::unordered_map<K, V>)> fn)
 	{
 		std::vector<R> results;
-		typename Enumeration<V, K>::Enumerator enumer = this->begin();
+		typename Enumeration<K, V>::Enumerator enumer = this->begin();
 		do {
 			results.push_back(fn(this->at(enumer)));
 			++enumer;
@@ -170,7 +170,7 @@ private:
 };
 
 template<typename V>
-class Enumeration<V, void> : public EnumerationBase<V, void>
+class Enumeration<void, V> : public EnumerationBase<V>
 {
 public:
 	Enumeration() {};
@@ -184,10 +184,10 @@ public:
 		}
 	};
 
-	std::vector<V> at(typename Enumeration<V, void>::Enumerator enumer)
+	std::vector<V> at(typename Enumeration<void, V>::Enumerator enumer)
 	{
 		std::vector<V> result;
-		for(int i = 0; i < this->vectorList.size(); i++) {
+		for(unsigned i = 0; i < this->vectorList.size(); i++) {
 			result.push_back(this->vectorList[i][enumer.getIndex(i)]);
 		}
 		return result;
@@ -197,7 +197,7 @@ public:
 	std::vector<R> applyFunc(std::function<R(std::vector<V>)> fn)
 	{
 		std::vector<R> results;
-		typename Enumeration<V, void>::Enumerator enumer = this->begin();
+		typename Enumeration<void, V>::Enumerator enumer = this->begin();
 		do {
 			results.push_back(fn(this->at(enumer)));
 			++enumer;

@@ -32,7 +32,7 @@ public:
 		return BlackBox<K,V>([index](std::unordered_map<K, V> valMap) -> V { return valMap[index]; }, {index});
 	};
 
-	const static std::unordered_map<K, V> emptyValMap;
+//	const static std::unordered_map<K, V> emptyValMap;
 
 	BlackBox() {};
 	BlackBox(std::function<V(std::unordered_map<K, V>)> expression, std::unordered_set<K> indexSet)

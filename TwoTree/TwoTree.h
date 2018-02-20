@@ -1,16 +1,7 @@
 #pragma once
 
-#include <iostream>
-#include <string>
-#include <utility>
-#include <vector>
-#include <unordered_set>
-#include <unordered_map>
-#include <boost/graph/undirected_graph.hpp>
-#include <boost/graph/properties.hpp>
-#include <boost/graph/subgraph.hpp>
-#include <boost/pending/property.hpp>
-#include "BlackBox.hpp"
+#include "stdafx.h"
+#include "utils/BlackBox.hpp"
 
 template<typename GraphType>
 using VerIter = typename boost::graph_traits<GraphType>::vertex_iterator;
@@ -44,11 +35,12 @@ enum EdgeType { partial, dropped, added };
 /**
  * Edge Bundled Properties
  */
+
 struct Link
 {
 	EdgeType edge_type;
-	double distance = 1;
-	std::pair<double, double> interval;
+	double distance = 100;
+	std::pair<double, double> interval = std::pair<double, double>(2E-8, 200 - 2E-8);
 };
 
 struct Reflex;
@@ -56,15 +48,21 @@ class TwoTree;
 
 struct Node
 {
-	double targetDistance = 1;
+	double targetDistance = 100;
 	Reflex *reflex;
 	void generateDRplan();
+    void printDRplan();
+    void exportGraphviz(std::string);
 	//double realizeTarget(std::unordered_map<int, double>);
-	BlackBox<> realize;
-	std::unordered_set<unsigned> freeAdd;
-	unsigned targetDrop;
-	unsigned targetAdd;
+//	BlackBox<> realize;
 	const TwoTree *tt;
+    bool isVarNode = false;
+    std::unordered_set<unsigned> freeVars;
+    unsigned targetDrop;
+    unsigned targetVar;
+    BlackBox<> targetFunc;
+    std::vector<Node *> subNodes;
+    std::string toString();
 };
 
 typedef boost::subgraph<
@@ -113,7 +111,7 @@ public:
 		std::vector<bool> flip;
 	};
 
-	TwoTree(std::istream &in);
+	TwoTree(char* filepath);
 	~TwoTree();
 	void print_vertices() const;
 	void print_edges() const;
@@ -123,11 +121,14 @@ public:
 	void realize();
 	Flip flip;
 	graph_t graph;
+    std::function<std::pair<double,double>(unsigned)> getInterval;
+    std::function<void(unsigned, std::pair<double,double>)> setInterval;
+    void resetInterval();
+    Node &getRoot();
 
 private:
 	// std::vector<boost::subgraph<graph_t>> subgraphList;
 	//void generateDRplan(graph_t&);
 	void printDRplan(graph_t&);
-	void realize(graph_t&);
-	const boost::local_property<boost::graph_bundle_t> GraphBundle = boost::local_property<boost::graph_bundle_t>(boost::graph_bundle);
+	const boost::local_property<boost::graph_bundle_t> GraphBundle;
 };

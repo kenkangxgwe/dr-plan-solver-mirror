@@ -2,12 +2,14 @@
  *   main.cpp
  */
 
-#include "stdafx.h"
-#include "Factory.h"
-#include "Tree.h"
-#include "Node.h"
-#include "BlackBox.hpp"
-//#include "TwoTree.h"
+#include <iostream>
+#include <vector>
+#include <unordered_map>
+#include "DR-plan/Factory.h"
+#include "DR-plan/Tree.h"
+#include "DR-plan/Node.h"
+#include "utils/BlackBox.hpp"
+#include "TwoTree/TwoTree.h"
 
 using namespace std;
 
@@ -31,12 +33,12 @@ int main()
 
 	vector<Polynomial> polyList;
 
-	polyList.push_back(Polynomial([](unordered_map<int, double> valList) -> double {
+	polyList.push_back(Polynomial([](unordered_map<unsigned, double> valList) -> double {
 		return pow(valList[0], 2) + pow(valList[1], 2) - 1.0;
 		//return pow(valList[0], 3) + pow(valList[1], 3);
 		//return valList[0] + valList[1];
 	}, { 0, 1 }));
-	polyList.push_back(Polynomial([](unordered_map<int, double> valList) -> double {
+	polyList.push_back(Polynomial([](unordered_map<unsigned, double> valList) -> double {
 		return pow(valList[0] - 0.5, 2) + pow(valList[1] - 0.5, 2) - 1.0;
 		//return pow(valList[0], 3) - pow(valList[1], 3);
 		//return valList[0] - valList[1] + 0.1;;
@@ -63,7 +65,7 @@ int main()
 	intervalList.emplace(1, pair<double, double>(0.8, 1.1));
 
 	// intervalList for two cubics
-	//unordered_map<int, pair<double, double>> intervalList;
+	//unordered_map<unsigned, pair<double, double>> intervalList;
 	//intervalList.emplace(0, pair<double, double>(-0.1, 0.1));
 	//intervalList.emplace(1, pair<double, double>(-0.1, 0.1));
 
@@ -82,7 +84,7 @@ int main()
 
 	cout << endl;
 	for (const auto &solution : tree0->finalSolutionLists) {
-        for (int i = 0; i < valMap.size(); i++) {
+        for (unsigned i = 0; i < valMap.size(); i++) {
 			cout << " x_" << i << " = " << setw(5) << solution.at(i) << "\t";
 		}
 		cout << endl;
@@ -102,7 +104,7 @@ int main()
 
 	cout << endl;
 	for (const auto &solution : tree1->finalSolutionLists) {
-        for (int i = 0; i < valMap.size(); i++) {
+        for (unsigned i = 0; i < valMap.size(); i++) {
 			cout << " x_" << i << " = " << setw(5) << solution.at(i) << "\t";
 		}
 		cout << endl;

@@ -14,21 +14,19 @@ set(SOURCE_FILES
         RootFinder.h
         Tree.h
         Factory.h
-        main.cpp
         Node.cpp
         Node.h
         RootFinder.cpp
         RootFinder.h)
 
-include_directories(${Utils_INCLUDE_DIR}
-        ${CMAKE_SOURCE_DIR}/Splinter/include)
+include_directories(${CMAKE_SOURCE_DIR})
 
 add_library(${PROJECT_NAME} STATIC ${SOURCE_FILES})
 
 set(SPLINTER_LIB CACHE FILEPATH "Path to Splinter library")
-target_link_libraries(DR_plan Utils ${SPLINTER_LIB})
-set_target_properties(DR_plan PROPERTIES COTIRE_CXX_PREFIX_HEADER_INIT "stdafx.h")
+target_link_libraries(${PROJECT_NAME} ${SPLINTER_LIB})
+set_target_properties(${PROJECT_NAME} PROPERTIES COTIRE_CXX_PREFIX_HEADER_INIT "stdafx.h")
 cotire(${PROJECT_NAME})
 
-set(${PROJECT_NAME}_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}
+set(${PROJECT_NAME}_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}
     CACHE INTERNAL "${PROJECT_NAME}: Include Directories" FORCE)

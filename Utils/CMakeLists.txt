@@ -8,5 +8,5 @@ set(SOURCE_FILES
         Enumeration.h
         BlackBox.hpp)
 
-set(${PROJECT_NAME}_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}
-        CACHE INTERNAL "${PROJECT_NAME}: Include Directories" FORCE)
+#set(${PROJECT_NAME}_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}
+#        CACHE INTERNAL "${PROJECT_NAME}: Include Directories" FORCE)

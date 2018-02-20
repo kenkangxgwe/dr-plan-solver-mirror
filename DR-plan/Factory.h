@@ -3,7 +3,7 @@
 #include "stdafx.h"
 //#include "Node.h"
 #include "Tree.h"
-#include "Polynomial.hpp"
+#include "utils/BlackBox.hpp"
 
 namespace DRPlan {
 
@@ -15,16 +15,16 @@ class Factory {
 public:
 
 	Factory() {};
-	Factory(int sampleNum, std::unordered_map<int, std::pair<double, double>> intervalList)
+	Factory(unsigned sampleNum, std::unordered_map<unsigned, std::pair<double, double>> intervalList)
 			:sampleNum(sampleNum), intervalList(intervalList) {};
 	~Factory() {};
 
-	void setSampleNum(int inputSampleNum) {
+	void setSampleNum(unsigned inputSampleNum) {
 		sampleNum = inputSampleNum;
 		return;
 	};
 
-	void setIntervalList(std::unordered_map<int, std::pair<double, double>> inputIntervalList) {
+	void setIntervalList(std::unordered_map<unsigned, std::pair<double, double>> inputIntervalList) {
 		intervalList = inputIntervalList;
 		return;
 	};
@@ -34,7 +34,7 @@ public:
 		return new Tree<Node>(root, sampleNum, intervalList);
 	};
 
-	Node* createNode(Polynomial poly, std::vector<int> freeVars, int solvedVar) {
+	Node* createNode(Polynomial poly, std::vector<unsigned> freeVars, unsigned solvedVar) {
 		return new Node(poly, freeVars, solvedVar);
 	};
 
@@ -44,7 +44,7 @@ public:
 		return child;
 	};
 
-	Node* createVar(int index)
+	Node* createVar(unsigned index)
 	{
 		Node *varNode = new Node(Polynomial::projectFunc(index), { index }, -1);
 		return varNode;
@@ -55,8 +55,8 @@ public:
 	};
 
 private:
-	int sampleNum;
-	std::unordered_map<int, std::pair<double, double>> intervalList;
+	unsigned sampleNum;
+	std::unordered_map<unsigned, std::pair<double, double>> intervalList;
     Node *root;
 
 };

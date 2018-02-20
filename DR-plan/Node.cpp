@@ -7,9 +7,15 @@ Node::Node()
 {
 }
 
-Node::Node(Polynomial poly, std::vector<unsigned> freeVars, unsigned targetVar)
-	:targetPoly(poly), freeVars(freeVars), targetVar(targetVar)
+Node::Node(Polynomial poly, std::vector<unsigned> freeVars, int targetVar)
+	:targetFunc(poly), freeVars(freeVars)
 {
+    if (targetVar == -1) {
+        this->targetVar = 0;
+        isVarNode = true;
+    } else {
+        this->targetVar = (unsigned)targetVar;
+    }
 }
 
 Node::~Node()
@@ -25,7 +31,7 @@ Polynomial Node::curryPoly(const std::unordered_map<unsigned , Polynomial>& solu
 	activeSet.insert(freeVars.begin(), freeVars.end());
 
 	std::unordered_set<unsigned> solvedVars; ///< The set that stores the indices of all previously solved variables.
-	for(auto &inVar : targetPoly.getVarList()) {
+	for(auto &inVar : targetFunc.getVarList()) {
 		if(!activeSet.count(inVar)) {
 			solvedVars.emplace(inVar);
 		}
@@ -39,7 +45,7 @@ Polynomial Node::curryPoly(const std::unordered_map<unsigned , Polynomial>& solu
 		for(auto &solvedVar : solvedVars) {
 			valMap[solvedVar] = solutionList.at(solvedVar).evaluate(valMap);
 		}
-		return targetPoly.evaluate(valMap);
+		return targetFunc.evaluate(valMap);
 	}, activeSet);
 }
 
