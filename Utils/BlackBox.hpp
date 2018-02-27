@@ -8,7 +8,7 @@
 /**
  * Black Box Class
  */
-template <typename K = unsigned, typename V = double>
+template <typename K = unsigned, typename V = double, typename R = V>
 class BlackBox
 {
 public:
@@ -17,9 +17,9 @@ public:
 	* @param value the constant value.
 	* @return the constant function.
 	*/
-	static BlackBox constFunc(V value)
+	static BlackBox constFunc(R value)
 	{
-		return BlackBox<K,V>([value](std::unordered_map<K, V> valMap) -> V { return value; }, std::unordered_set<K>());
+		return BlackBox<K,V,R>([value](std::unordered_map<K, V> valMap) -> R { return value; }, std::unordered_set<K>());
 	};
 
 	/**
@@ -35,22 +35,22 @@ public:
 //	const static std::unordered_map<K, V> emptyValMap;
 
 	BlackBox() {};
-	BlackBox(std::function<V(std::unordered_map<K, V>)> expression, std::unordered_set<K> indexSet)
+	BlackBox(std::function<R(std::unordered_map<K, V>)> expression, std::unordered_set<K> indexSet)
 	{
 		this->expression = expression;
 		setVars(indexSet);
 	};
 	~BlackBox() {};
 
-	V evaluate(std::unordered_map<K, V> valMap) const { return expression(valMap); };
-	V operator() (std::unordered_map<K, V> valMap) const { return expression(valMap); };
+	R evaluate(std::unordered_map<K, V> valMap) const { return expression(valMap); };
+	R operator() (std::unordered_map<K, V> valMap) const { return expression(valMap); };
 	std::vector<K> getVarList() const { return indexList; };
 	std::unordered_set<K> getVarSet() const { return indexSet; };
 
 private:
 	std::vector<K> indexList;
 	std::unordered_set<K> indexSet;
-	std::function<V(std::unordered_map<K, V>)> expression;
+	std::function<R(std::unordered_map<K, V>)> expression;
 	void setVars(std::unordered_set<K> indexSet)
 	{
 		this->indexSet = indexSet;

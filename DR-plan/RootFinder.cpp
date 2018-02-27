@@ -16,6 +16,7 @@ std::vector<double> RootFinder::findZeros(BSpline bs, unsigned deg)
             continue;
         }
         std::vector<double> tempZeros;
+        tempZeros.push_back((double)c(k-1, 0));
         bool keepFinding = true;
         unsigned nextK = k;
         while(keepFinding) {
@@ -33,7 +34,14 @@ std::vector<double> RootFinder::findZeros(BSpline bs, unsigned deg)
                     keepFinding = false;
                 } else {
                     k = k + i;
-                    bs.insertKnots(tempZeros.back(), 0);
+                    try{
+                        bs.insertKnots(tempZeros.back(), 0);
+                    } catch (std::exception e) {
+                        zeros.push_back(tempZeros.back());
+                        keepFinding = false;
+                    } catch(...) {
+                        std::cout << bs.getControlPoints() << std::endl;
+                    }
                     nextK++;
                 }
                 break;

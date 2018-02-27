@@ -8,7 +8,8 @@ set(SOURCE_FILES main.cpp)
 
 include_directories(${CMAKE_SOURCE_DIR}
         ${TwoTree_INCLUDE_DIRS}
-        ${DR_plan_INCLUDE_DIRS})
+        # ${DR_plan_INCLUDE_DIRS}
+        )
 
 add_executable(${PROJECT_NAME} ${SOURCE_FILES})
 

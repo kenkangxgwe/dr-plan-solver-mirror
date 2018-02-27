@@ -83,7 +83,7 @@ int main()
     tree0->solveTree();
 
 	cout << endl;
-	for (const auto &solution : tree0->finalSolutionLists) {
+	for (const auto &solution : tree0->finalSolutionList) {
         for (unsigned i = 0; i < valMap.size(); i++) {
 			cout << " x_" << i << " = " << setw(5) << solution.at(i) << "\t";
 		}
@@ -103,7 +103,7 @@ int main()
     tree1->solveTree();
 
 	cout << endl;
-	for (const auto &solution : tree1->finalSolutionLists) {
+	for (const auto &solution : tree1->finalSolutionList) {
         for (unsigned i = 0; i < valMap.size(); i++) {
 			cout << " x_" << i << " = " << setw(5) << solution.at(i) << "\t";
 		}

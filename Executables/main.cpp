@@ -29,12 +29,11 @@ int main(int argv, char* argc[])
 	TwoTree tt = TwoTree(argc[1]);
 	tt.print_graph();
     tt.generateDRplan();
-    DRPlan::Tree<Node> drplan(&tt.getRoot(), 50, tt.getInterval, tt.setInterval);
+    DRPlan::Tree<Node> drplan(&tt.getRoot(), 50);
     do{
         std::cout << std::endl << "Trying next flip:" << std::endl;
-        tt.resetInterval();
         if (drplan.solveTree()) {
-            for (const auto &solution : drplan.finalSolutionLists) {
+            for (const auto &solution : drplan.finalSolutionList) {
                 for (const auto &kvPair : solution) {
                     std::cout << " x_" << kvPair.first << " = " << std::setw(5) << kvPair.second << "\t";
                 }

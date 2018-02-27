@@ -19,14 +19,22 @@ using EdgeDesc = typename boost::graph_traits<GraphType>::edge_descriptor;
  */
 struct Point
 {
-	static double distance(Point a, Point b)
+    static double distance(Point a, Point b)
+    {
+        return sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2));
+    };
+	static bool CCW(Point a, Point b, Point c)
 	{
-		return sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2));
+		return (-a.y * b.x + a.x * b.y + a.y * c.x - b.y * c.x - a.x * c.y + b.x * c.y) > 0;
 	};
 	Point(double x = 0, double y = 0)
 		:x(x), y(y)
 	{
 	};
+    void setXY(double x, double y) {
+        this->x = x;
+        this->y = y;
+    }
 	double x, y;
 };
 
@@ -38,9 +46,18 @@ enum EdgeType { partial, dropped, added };
 
 struct Link
 {
+	static double getEps()
+	{
+		return 2E-8;
+	}
+
+	Link()
+		:distance(100.0f), interval(std::make_pair(getEps(), 200.0f - getEps()))
+	{}
+
 	EdgeType edge_type;
-	double distance = 100;
-	std::pair<double, double> interval = std::pair<double, double>(2E-8, 200 - 2E-8);
+	double distance;
+	std::pair<double, double> interval;
 };
 
 struct Reflex;
@@ -51,18 +68,19 @@ struct Node
 	double targetDistance = 100;
 	Reflex *reflex;
 	void generateDRplan();
-    void printDRplan();
-    void exportGraphviz(std::string);
-	//double realizeTarget(std::unordered_map<int, double>);
-//	BlackBox<> realize;
+    void printDRplan() const;
+    void exportGraphviz(std::string = "") const;
+    void realize(std::unordered_map<unsigned, double>);
 	const TwoTree *tt;
     bool isVarNode = false;
+    std::pair<double, double> interval;
     std::unordered_set<unsigned> freeVars;
     unsigned targetDrop;
     unsigned targetVar;
     BlackBox<> targetFunc;
+	bool getDropFlip() const;
     std::vector<Node *> subNodes;
-    std::string toString();
+    std::string toString() const;
 };
 
 typedef boost::subgraph<
@@ -87,6 +105,8 @@ struct Reflex
 	Reflex(TTGT &g) :graphRef(g) {};
 	~Reflex() {};
 	TTGT &graphRef;
+	EdgeDesc<TTGT> targetEdge;
+	EdgeDesc<TTGT> droppedEdge;
 };
 
 class TwoTree
@@ -117,18 +137,15 @@ public:
 	void print_edges() const;
 	void print_graph() const;
 	void generateDRplan();
-	void printDRplan();
+	void printDRplan() const;
 	void realize();
-	Flip flip;
-	graph_t graph;
-    std::function<std::pair<double,double>(unsigned)> getInterval;
-    std::function<void(unsigned, std::pair<double,double>)> setInterval;
-    void resetInterval();
     Node &getRoot();
+    graph_t graph;
+    Flip flip;
 
 private:
 	// std::vector<boost::subgraph<graph_t>> subgraphList;
 	//void generateDRplan(graph_t&);
-	void printDRplan(graph_t&);
+	void printDRplan(graph_t&) const;
 	const boost::local_property<boost::graph_bundle_t> GraphBundle;
 };
