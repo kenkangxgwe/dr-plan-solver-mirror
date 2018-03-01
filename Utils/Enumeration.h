@@ -108,7 +108,8 @@ public:
 
         bool isEnd() const {return _isEnd;};
 
-    private:
+
+    protected:
         bool _isEnd;
 		std::vector<unsigned> indexList;
 		const std::vector<unsigned> &sizeList;
@@ -139,8 +140,14 @@ class Enumeration : public EnumerationBase<V>
 {
 public:
 
+//    class Enumerator : public EnumerationBase<V>::Enumerator {
+//    public:
+//        Enumerator(const EnumerationBase<V> *enumeration) : Enumerator(enumeration) {}
+//    };
+
 	Enumeration() {};
 	~Enumeration() {};
+
 	Enumeration(const std::unordered_map<K, std::vector<V>> mapList)
 	{
 		for(const auto & kvPair : mapList) {
@@ -168,7 +175,7 @@ public:
 		}
 	};
 
-	std::unordered_map<K, V> at (const typename Enumeration<K, V>::Enumerator enumer) const
+	std::unordered_map<K, V> at (const typename Enumeration<K, V>::Enumerator &enumer) const
 	{
         if(enumer.isEnd()) {
             throw("Reach the end of the enumerator.");
@@ -206,6 +213,7 @@ template<typename V>
 class Enumeration<void, V> : public EnumerationBase<V>
 {
 public:
+
 	Enumeration() {};
 	~Enumeration() {};
 

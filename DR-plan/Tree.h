@@ -39,7 +39,7 @@ public:
         for(const auto& solution : solutionList) {
             DoubleMap finalSolution;
             for(const auto &variable : solution) {
-                finalSolution[variable.first] = variable.second.evaluate({});
+                finalSolution[variable.first] = variable.second({});
             }
             finalSolutionList.push_back(finalSolution);
         }
@@ -111,14 +111,16 @@ private:
             const auto &domain = domainList[i];
             BlackBox<> curriedSol = curryFunc(curNode ,solution);
             std::vector<BlackBox<>> interPolys;
-            std::vector<Domain> interDomain;
-            std::tie(interPolys, interDomain) = interpolate(curriedSol, domain, curNode->targetVar, curNode);
+            std::vector<Domain> interDomains;
+            std::tie(interPolys, interDomains) = interpolate(curriedSol, domain, curNode->targetVar, curNode);
             std::cout << "  Found " << interPolys.size() << " solution(s)." << std::endl;
             if (!interPolys.size()) {
                 return false;
             }
-            newDomainList.insert(newDomainList.end(), interDomain.begin(), interDomain.end());
-            for(auto &interPoly : interPolys) {
+            for(const auto &interDomain : interDomains) {
+                newDomainList.push_back(updateDomain(domain, interDomain));
+            }
+            for(const auto &interPoly : interPolys) {
                 newSolutionList.push_back(updateSolution(solution, interPoly, curNode->targetVar));
                 //double begin = -0.44f;
                 //double end = -0.32f;
@@ -126,12 +128,13 @@ private:
                 //	DoubleMap valMapList;
                 //	valMap[0] = begin + (double)i * (end - begin) / (double)sampleNum;
                 //	std::cout << "x_0(" << valMap[0] << ") = ";
-                //	std::cout << interPoly.evaluate(valMap) << std::endl;
-                //	std::cout << newSolutionList.back().at(curNode->targetVar).evaluate(valMap) << std::endl;
+                //	std::cout << interPoly(valMap) << std::endl;
+                //	std::cout << newSolutionList.back().at(curNode->targetVar)(valMap) << std::endl;
                 //}
             }
         }
         solutionList = newSolutionList;
+        domainList = newDomainList;
         return true;
     };
 
@@ -147,15 +150,15 @@ private:
             }
         }
 
-        return BlackBox<>([&, curNode, solvedVars](DoubleMap valMap) -> double {
+        return BlackBox<>([=](DoubleMap valMap) -> double {
             /**
              * Given the values of active variables, using the solution to calculated
              * the values of solved variables and insert them into the value map.
              */
             for(auto &solvedVar : solvedVars) {
-                valMap[solvedVar] = solution.at(solvedVar).evaluate(valMap);
+                valMap[solvedVar] = solution.at(solvedVar)(valMap);
             }
-            return curNode->targetFunc.evaluate(valMap);
+            return curNode->targetFunc(valMap);
         }, activeSet);
     };
 
@@ -222,8 +225,8 @@ private:
 					} else {
 						dataTable[1].addSample(valMap[targetVar], result);
 					}
-                    // node->exportGraphviz("s" + std::to_string(i));
-                } catch(std::exception e) {
+//                    node->exportGraphviz("s" + std::to_string(i));
+                } catch(...) {
                     continue;
                 }
             }
@@ -313,7 +316,7 @@ private:
             // auto x = bspline.getControlPoints();
             // std::cout << x << std::endl;
             newDomainList.push_back(newDomain);
-            newSolutionList.push_back(BlackBox<>([&](DoubleMap valMap) -> double {
+            newSolutionList.push_back(BlackBox<>([=](DoubleMap valMap) -> double {
                 std::vector<double> valList;
                 for(auto &varIndex : freeVarSet) {
                     valList.push_back(valMap[varIndex]);
@@ -349,6 +352,14 @@ private:
         }
         return newSolutionList;
     };
+
+    Domain updateDomain(const Domain &domain, const Domain &interDomain) const {
+        Domain newDomain(domain);
+        for (const auto intervalMap : interDomain) {
+            newDomain[intervalMap.first] = intervalMap.second;
+        }
+        return newDomain;
+    }
 };
 
 }

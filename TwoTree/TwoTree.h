@@ -131,17 +131,18 @@ public:
 		std::vector<bool> flip;
 	};
 
-	TwoTree(char* filepath);
+	TwoTree(char* , bool = false);
 	~TwoTree();
 	void print_vertices() const;
 	void print_edges() const;
 	void print_graph() const;
 	void generateDRplan();
 	void printDRplan() const;
-	void realize();
+	void realize(std::unordered_map<unsigned, double>, std::string);
     Node &getRoot();
     graph_t graph;
     Flip flip;
+    Flip dropFlip;
 
 private:
 	// std::vector<boost::subgraph<graph_t>> subgraphList;

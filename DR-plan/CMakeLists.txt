@@ -21,7 +21,7 @@ set(SOURCE_FILES
 
 include_directories(${CMAKE_SOURCE_DIR})
 
-add_library(${PROJECT_NAME} STATIC ${SOURCE_FILES})
+add_library(${PROJECT_NAME} SHARED ${SOURCE_FILES})
 
 set(SPLINTER_LIB CACHE FILEPATH "Path to Splinter library")
 target_link_libraries(${PROJECT_NAME} ${SPLINTER_LIB})
