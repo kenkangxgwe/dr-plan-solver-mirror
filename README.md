@@ -7,7 +7,7 @@
 
 ## Build
 1. git clone this repository.  
-    ```bash
+    ```
     git clone https://bitbucket.org/kenkangxgwe/dr-plan-solver
     ```
 2. Build
@@ -30,8 +30,5 @@
         cd build
         cmake .. -DCMAKE_BUILD_TYPE={Debug/Release} -DSPLINTER_LIB="Path/to/libsplinter-static-*-*.a"
         ```
-        3. Make  
-        ```
-        make
-        ```
+        3. Make
 3. Run `DRPLAN`.
