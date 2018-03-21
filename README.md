@@ -26,12 +26,12 @@
     * Linux
         1. Download the linux version of Splinter library.
         2. Use CMake to build.  
-        ```bash
+        ```
         cd build
         cmake .. -DCMAKE_BUILD_TYPE={Debug/Release} -DSPLINTER_LIB="Path/to/libsplinter-static-*-*.a"
         ```
         3. Make  
-        ```bash
+        ```
         make
         ```
-3. Run `DR_plan`.
+3. Run `DRPLAN`.
