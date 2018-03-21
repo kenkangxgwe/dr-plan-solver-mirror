@@ -1,0 +1,41 @@
+graph G {
+  00 [label="00", width=0, height=0; pos="100, 0!"];
+  01 [label="01", width=0, height=0; pos="0, 173!"];
+  02 [label="02", width=0, height=0; pos="-100, 0!"];
+  03 [label="03", width=0, height=0; pos="-300, 0!"];
+  04 [label="04", width=0, height=0; pos="-200, -173!"];
+  05 [label="05", width=0, height=0; pos="-300, -346!"];
+  06 [label="06", width=0, height=0; pos="-500, -346!"];
+  07 [label="07", width=0, height=0; pos="-100, -346!"];
+  08 [label="08", width=0, height=0; pos="200, -173!"];
+  09 [label="09", width=0, height=0; pos="100, -346!"];
+  10 [label="10", width=0, height=0; pos="300, -346!"];
+  11 [label="11", width=0, height=0; pos="300, 0!"];
+  12 [label="12", width=0, height=0; pos="500, -346!"];
+  00--01 [color="black", penwidth=5]
+  00--02 [color="black", penwidth=5];
+  01--02 [color="black", penwidth=5];
+  01--03 [color="black", penwidth=5];
+  02--03 [color="black", penwidth=5];
+  02--04 [color="black", penwidth=5];
+  03--04 [color="black", penwidth=5];
+  03--05 [color="green", penwidth=5];
+  03--06 [color="black", penwidth=5];
+  04--05 [color="black", penwidth=5];
+  04--07 [color="black", penwidth=5];
+  04--08 [color="black", penwidth=5];
+  05--06 [color="black", penwidth=5];
+  05--07 [color="black", penwidth=5];
+  07--08 [color="green", penwidth=5];
+  07--09 [color="black", penwidth=5];
+  08--09 [color="black", penwidth=5];
+  08--10 [color="black", penwidth=5];
+  08--11 [color="black", penwidth=5];
+  09--10 [color="black", penwidth=5];
+  10--11 [color="green", penwidth=5];
+  10--12 [color="black", penwidth=5];
+  11--12 [color="black", penwidth=5];
+  00--08 [color="red", penwidth=5];
+  00--11 [color="red", penwidth=5];
+  01--12 [color="red", penwidth=5];
+}

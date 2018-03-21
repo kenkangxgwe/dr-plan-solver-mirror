@@ -1,0 +1,1 @@
+neato -n -Tpng -O %1

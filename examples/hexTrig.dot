@@ -1,0 +1,26 @@
+graph G {
+  00 [label="00", width=0, height=0; pos="0, 0!"];
+  01 [label="01", width=0, height=0; pos="80, 0!"];
+  02 [label="02", width=0, height=0; pos="60, 40!"];
+  03 [label="03", width=0, height=0; pos="120, 70!"];
+  04 [label="04", width=0, height=0; pos="20, 90!"];
+  05 [label="05", width=0, height=0; pos="100, 150!"];
+  06 [label="06", width=0, height=0; pos="150, 100!"];
+  07 [label="07", width=0, height=0; pos="190, 170!"];
+  00--01 [color="black", penwidth=1];
+  00--02 [color="black", penwidth=1];
+  01--02 [color="green", penwidth=1];
+  01--03 [color="black", penwidth=1];
+  02--03 [color="black", penwidth=1];
+  02--04 [color="black", penwidth=1];
+  03--04 [color="green", penwidth=1];
+  03--05 [color="black", penwidth=1];
+  04--05 [color="black", penwidth=1];
+  03--06 [color="black", penwidth=1];
+  05--06 [color="green", penwidth=1];
+  05--07 [color="black", penwidth=1];
+  06--07 [color="black", penwidth=1];
+  00--04 [color="red", penwidth=1];
+  04--06 [color="red", penwidth=1];
+  01--07 [color="red", penwidth=1];
+}
