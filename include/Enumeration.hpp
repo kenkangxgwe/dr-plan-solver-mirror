@@ -1,10 +1,10 @@
 #pragma once
-#include <vector>
+#include "stdafx.h"
 
 /**
  * The Enumeration class is a helper class to enumerate
  * the element in Cartesian product set from a container of vectors.
-*/
+ */
 
 template <typename V>
 class EnumerationBase

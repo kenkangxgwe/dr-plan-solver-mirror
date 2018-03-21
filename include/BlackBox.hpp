@@ -1,14 +1,11 @@
 #pragma once
 
-#include <unordered_map>
-#include <functional>
-#include <unordered_set>
-#include <vector>
+#include "stdafx.h"
 
 /**
  * Black Box Class
  */
-template <typename K = unsigned, typename V = double, typename R = V>
+template <typename K = unsigned, typename V = double, typename R = double>
 class BlackBox
 {
 public:
