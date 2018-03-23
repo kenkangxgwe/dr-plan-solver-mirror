@@ -1,6 +1,7 @@
 .*/
 *build*/
 CMakeSettings.json
+compile_commands.json
 DRplanSolver
 exports*/
 deprecated/*
