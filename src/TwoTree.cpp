@@ -72,7 +72,7 @@ struct edge_copier {
     mutable typename property_map<outputGraph, EdgeType Link::*>::type edge_type_map;
 };
 
-TwoTree::TwoTree(char *filePath, bool useDistanceInfo)
+TwoTree::TwoTree(std::string filePath, bool useDistanceInfo)
         : GraphBundle(boost::local_property<boost::graph_bundle_t>(boost::graph_bundle)) {
     std::ifstream ifs(filePath);
     typedef undirected_graph<property<position_t, std::string>, property<color_t, std::string>, no_property> graphviz_t;

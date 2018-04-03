@@ -176,6 +176,9 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
 //        } else {
     const double targetBegin = domain.at(targetCayley).first;
     const double targetEnd = domain.at(targetCayley).second;
+    double dstp = (targetEnd - targetBegin) / 40;
+    double tol = (targetEnd - targetBegin) / 80;
+    double maxstp = (targetEnd - targetBegin) / sampleNum;
     Enumeration<unsigned, double> enumFree(sampleList, freeVarSet);
     for(auto enumer = enumFree.begin(); enumer != enumFree.end(); ++enumer) {
         DoubleMap activeVals = enumFree.at(enumer); // std::move() needed?
@@ -195,30 +198,69 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
         }
          */
 
-        for(unsigned i = 0; i <= sampleNum; i++) {
-            activeVals[targetCayley] = targetBegin + (double) i * (targetEnd - targetBegin) / (double) sampleNum;
+        double stp =  maxstp;
+        double lastSample = 0.0f;
+        double lastResult = 0.0f;
+        bool initial = true;
+        bool reset = true;
+        double lastSrcFlip = 0, lastTarFlip = 0;
+        int i = 1;
+        for(double curSample = targetBegin; curSample <= targetEnd; curSample += stp) {
+            activeVals[targetCayley] = curSample;
             try {
                 node->realize(varMap(activeVals));
-                double result = node->dropDiff();
-                if(std::isnan(result)) {
+                double curResult = node->dropDiff();
+                if(std::isnan(curResult)) {
                     continue;
                 }
                 double srcFlip, tarFlip;
                 std::tie(srcFlip, tarFlip) = node->dropFlip();
+//                node->exportGraphviz("s" + std::to_string(i++));
+                if (initial) {
+                    initial = false;
+                } else if ((srcFlip > 0.f) == (lastSrcFlip > 0.f)
+                           && (tarFlip > 0.f) == (lastTarFlip > 0.f)) {
+                    if(stp < 1E-3) {
+                        stp = maxstp;
+                        curSample = lastSample;
+                        initial = true;
+                    }
+                    if (abs(curResult - lastResult) < (dstp - tol)) {
+                        if(reset) {
+                            stp = maxstp;
+                            curSample = lastSample + stp;
+                        } else {
+                            stp /= 2.0;
+                            continue;
+                        }
+                    }
+                    else if (abs(curResult - lastResult) > (dstp + tol)) {
+                        reset = false;
+                        stp /= 2.0;
+                        curSample = lastSample;
+                        continue;
+                    }
+                    else {
+                        reset = true;
+                    }
+                }
                 if(srcFlip > 0.f) {
                     if(tarFlip > 0.f) {
-                        dataTable[0].addSample(activeVals[targetCayley], result);
+                        dataTable[0].addSample(activeVals[targetCayley], curResult);
                     } else {
-                        dataTable[1].addSample(activeVals[targetCayley], result);
+                        dataTable[1].addSample(activeVals[targetCayley], curResult);
                     }
                 } else {
                     if (tarFlip > 0.f){
-                        dataTable[2].addSample(activeVals[targetCayley], result);
+                        dataTable[2].addSample(activeVals[targetCayley], curResult);
                     } else {
-                        dataTable[3].addSample(activeVals[targetCayley], result);
+                        dataTable[3].addSample(activeVals[targetCayley], curResult);
                     }
                 }
-                node->exportGraphviz("s" + std::to_string(i));
+                lastSample = curSample;
+                lastResult = curResult;
+                lastSrcFlip = srcFlip;
+                lastTarFlip = tarFlip;
             } catch(char const* msg) {
                 std::cout << msg;
                 continue;
@@ -241,9 +283,9 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
                 unsigned j = 0;
                 for(auto const &root : roots) {
                     try{
-                    activeVals[targetCayley] = root;
-                    node->realize(varMap(activeVals));
-                    std::cout << "Source Flip: " << node->dropFlip().first << "Target Flip: " << node->dropFlip().second << std::endl;
+                        activeVals[targetCayley] = root;
+                        node->realize(varMap(activeVals));
+                        std::cout << "Source Flip: " << node->dropFlip().first << "Target Flip: " << node->dropFlip().second << std::endl;
                     } catch(const char* msg) {
                         std::cout << msg << std::endl;
                         j++;

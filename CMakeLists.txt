@@ -16,7 +16,7 @@ set(SOURCE_FILES
         src/main.cpp)
 
 # Include Boost Graph Library
-find_package(Boost REQUIRED graph)
+find_package(Boost COMPONENTS program_options graph REQUIRED)
 
 include_directories(
         ${CMAKE_SOURCE_DIR}/include
