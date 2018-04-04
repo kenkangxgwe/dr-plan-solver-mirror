@@ -24,5 +24,6 @@
 #include <boost/graph/properties.hpp>
 #include <boost/pending/property.hpp>
 #include <boost/graph/subgraph.hpp>
+#include <boost/program_options.hpp>
 
 // TODO: reference additional headers your program requires here

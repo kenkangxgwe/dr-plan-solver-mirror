@@ -142,7 +142,7 @@ public:
         std::vector<bool> flip;
     };
 
-    TwoTree(char* , bool = false);
+    TwoTree(std::string, bool = false);
     ~TwoTree();
     void print_vertices() const;
     void print_edges() const;

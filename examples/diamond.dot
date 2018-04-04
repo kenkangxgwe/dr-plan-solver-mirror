@@ -3,10 +3,10 @@ graph G {
   01 [label="01", width=0, height=0; pos="0, 173!"];
   02 [label="02", width=0, height=0; pos="-100, 0!"];
   03 [label="03", width=0, height=0; pos="-300, 0!"];
-  00--01 [color="black", penwidth=5];
-  00--02 [color="black", penwidth=5];
-  01--02 [color="green", penwidth=5];
-  01--03 [color="black", penwidth=5];
-  02--03 [color="black", penwidth=5];
-  00--03 [color="red", penwidth=5];
+  00--01 [color="black", penwidth=1];
+  00--02 [color="black", penwidth=1];
+  01--02 [color="green", penwidth=1];
+  01--03 [color="black", penwidth=1];
+  02--03 [color="black", penwidth=1];
+  00--03 [color="red", penwidth=1];
 }
