@@ -5,8 +5,6 @@
 #include "RootFinder.h"
 #include "BlackBox.hpp"
 #include "Enumeration.hpp"
-#include "Splinter/bspline.h"
-#include "Splinter/bsplinebuilder.h"
 
 namespace DRPLAN
 {

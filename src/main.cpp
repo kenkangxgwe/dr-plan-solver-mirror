@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
     TwoTree tt(inputFile, useLengthinfo);
     tt.print_graph();
     tt.generateDRplan();
-//    tt.printDRplan();
+    tt.printDRplan();
 
     /**
      * Parse and apply the sample number.

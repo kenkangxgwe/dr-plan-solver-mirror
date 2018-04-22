@@ -25,5 +25,7 @@
 #include <boost/pending/property.hpp>
 #include <boost/graph/subgraph.hpp>
 #include <boost/program_options.hpp>
+#include "Splinter/bspline.h"
+#include "Splinter/bsplinebuilder.h"
 
 // TODO: reference additional headers your program requires here
