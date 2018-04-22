@@ -1,0 +1,26 @@
+graph G {
+0[pos = "0, 0!"];
+1[pos = "80, 0!"];
+2[pos = "59.9917, 40.0124!"];
+3[pos = "119.997, 70.0017!"];
+4[pos = "20.0055, 90.0233!"];
+5[pos = "100.018, 150.007!"];
+6[pos = "150.005, 99.9935!"];
+7[pos = "190.023, 169.983!"];
+0--1 [color="black", penwidth = "1"];
+0--2 [color="black", penwidth = "1"];
+1--2 [color="green", penwidth = "1"];
+1--3 [color="black", penwidth = "1"];
+2--3 [color="black", penwidth = "1"];
+2--4 [color="black", penwidth = "1"];
+3--4 [color="green", penwidth = "1"];
+3--5 [color="black", penwidth = "1"];
+4--5 [color="black", penwidth = "1"];
+3--6 [color="black", penwidth = "1"];
+5--6 [color="green", penwidth = "1"];
+5--7 [color="black", penwidth = "1"];
+6--7 [color="black", penwidth = "1"];
+0--4 [color="red", penwidth = "1"];
+4--6 [color="red", penwidth = "1"];
+1--7 [color="red", penwidth = "1"];
+}
