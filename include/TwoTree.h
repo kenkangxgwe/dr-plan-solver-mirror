@@ -10,6 +10,8 @@ using EdgeIter = typename boost::graph_traits<GraphType>::edge_iterator;
 template<typename GraphType>
 using OutEdgeIter = typename boost::graph_traits<GraphType>::out_edge_iterator;
 template<typename GraphType>
+using AdjVerIter = typename boost::graph_traits<GraphType>::adjacency_iterator;
+template<typename GraphType>
 using VerDesc = typename boost::graph_traits<GraphType>::vertex_descriptor;
 template<typename GraphType>
 using EdgeDesc = typename boost::graph_traits<GraphType>::edge_descriptor;
@@ -81,15 +83,17 @@ struct Node
     void printDRplan() const;
     void exportGraphviz(std::string = "") const;
     void realize(std::unordered_map<unsigned, double>);
+    void calcInterval();
     const TwoTree *tt;
     bool isCayleyNode = false;
     std::pair<double, double> interval;
-    std::unordered_set<unsigned> freeCayley;
-    std::unordered_set<unsigned> allCayley;
+    std::vector<unsigned> freeCayley;
+    std::vector<unsigned> allCayley;
     unsigned targetDrop;
     unsigned targetCayley;
     double dropDiff();
     std::pair<double, double> dropFlip();
+    void findFlip();
     std::vector<Node *> subNodes;
     std::string toString() const;
 };

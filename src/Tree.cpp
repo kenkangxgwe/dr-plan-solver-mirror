@@ -87,9 +87,9 @@ bool Tree::solveNode(DRPLAN::Node *curNode)
         std::vector<BlackBox<>> repList;
         std::vector<Domain> repDomains;
         std::tie(repList, repDomains) = solveTarget(curNode, transformedMap, domain);
-        std::cout << "  Found " << repList.size() << " solution(s)." << std::endl;
+        std::cout << "  Found " << repList.size() << " representation(s)." << std::endl;
         if(!repList.size()) {
-            return false;
+            continue;
         }
         for(const auto &interDomain : repDomains) {
             newDomainList.push_back(updateDomain(domain, interDomain));
@@ -107,8 +107,20 @@ bool Tree::solveNode(DRPLAN::Node *curNode)
             //}
         }
     }
+    if(!newSolutionList.size()) {
+        return false;
+    }
+
     solutionList = newSolutionList;
     domainList = newDomainList;
+    std::cout << "Found " << solutionList.size() << " solution(s) for x_" << curNode->targetCayley << "(";
+    for(auto iter = curNode->freeCayley.begin(); iter != curNode->freeCayley.end(); ++iter) {
+        if(iter != curNode->freeCayley.begin()) {
+            std::cout << ", ";
+        }
+        std::cout << "x_" << (*iter);
+    }
+    std::cout << ")." << std::endl;
     return true;
 }
 
@@ -144,6 +156,7 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
     freeVarSet.erase(targetCayley);
     // The free degree should be no more than 5.
     assert(freeVarSet.size() <= 5);
+
     /**
      * Compute the sample values of all free variables.
      */
@@ -157,6 +170,7 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
             sampleList[freeVar].push_back(begin + (double) i * (end - begin) / (double) sampleNum);
         }
     }
+
     /**
      * For each combination of the free variable values,
      * interpolate the sample values of target variable against the values of the blackbox,
@@ -164,47 +178,26 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
      */
     std::vector<DoubleMap> freeValsList[4];
     std::vector<double> rootList[4];
-    /**
-     * If there is no samples for free variable, either there is no free variables,
-     * or there is no interval available for all free variables,
-     * interpolate and find root with empty map.
-     * Otherwise, interpolate the sample values.
-     */
-//        if(freeVarSet.empty()) {
-//            Enumeration<unsigned, double> enumFree(sampleList, freeVarSet);
-//            findRoot({});
-//        } else {
     const double targetBegin = domain.at(targetCayley).first;
     const double targetEnd = domain.at(targetCayley).second;
-    double dstp = (targetEnd - targetBegin) / 40;
-    double tol = (targetEnd - targetBegin) / 80;
+    double dstp = (targetEnd - targetBegin) / 60;
+    double tol = (targetEnd - targetBegin) / 100;
     double maxstp = (targetEnd - targetBegin) / sampleNum;
     Enumeration<unsigned, double> enumFree(sampleList, freeVarSet);
     for(auto enumer = enumFree.begin(); enumer != enumFree.end(); ++enumer) {
         DoubleMap activeVals = enumFree.at(enumer); // std::move() needed?
         SPLINTER::DataTable dataTable[4];
         /**
-         * Binary Search
-        activeVals[targetCayley]= targetBegin;
-        node->realize(varMap(activeVals));
-        double srcFlipBegin, tarFlipBegin;
-        std::tie(srcFlipBegin, tarFlipBegin) = node->dropFlip();
-        activeVals[targetCayley]= targetEnd;
-        node->realize(varMap(activeVals));
-        double srcFlipEnd, tarFlipEnd;
-        std::tie(srcFlipEnd, tarFlipEnd) = node->dropFlip();
-        if(beginFlip ^ endFlip) {
-
-        }
+         * Binary Search (Not implemented. Needed?)
          */
-
         double stp =  maxstp;
         double lastSample = 0.0f;
         double lastResult = 0.0f;
         bool initial = true;
         bool reset = true;
         double lastSrcFlip = 0, lastTarFlip = 0;
-        int i = 1;
+        int suffix = 1; // suffix of export graph filename.
+
         for(double curSample = targetBegin; curSample <= targetEnd; curSample += stp) {
             activeVals[targetCayley] = curSample;
             try {
@@ -215,7 +208,9 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
                 }
                 double srcFlip, tarFlip;
                 std::tie(srcFlip, tarFlip) = node->dropFlip();
-//                node->exportGraphviz("s" + std::to_string(i++));
+               if(freeVarSet.empty()) {
+                    node->exportGraphviz("s" + std::to_string(suffix++));
+                }
                 if (initial) {
                     initial = false;
                 } else if ((srcFlip > 0.f) == (lastSrcFlip > 0.f)
@@ -244,6 +239,7 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
                         reset = true;
                     }
                 }
+
                 if(srcFlip > 0.f) {
                     if(tarFlip > 0.f) {
                         dataTable[0].addSample(activeVals[targetCayley], curResult);
@@ -266,45 +262,85 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
                 continue;
             }
         }
+
         for(int i = 0; i < 4; i++) {
             if(dataTable[i].getNumSamples() < 4) {
-//                    std::cout << "    Not enough sample points." << std::endl;
+//                std::cout << "    Not enough sample points." << std::endl;
                 continue;
             }
             SPLINTER::BSpline slicedInter = SPLINTER::BSpline::Builder(dataTable[i]).degree(3).build();
             std::vector<double> roots = RootFinder::findZeros(slicedInter, 3);
             if(!roots.size()) {
                 // std::cout << "    Found no roots" << std::endl;
-                continue;
-            }
-            freeValsList[i].push_back(activeVals);
-            if(roots.size() > 2) {
-                std::cout << "    Found " << roots.size() << " roots. Using the first valid one this time." << std::endl;
-                unsigned j = 0;
-                for(auto const &root : roots) {
-                    try{
-                        activeVals[targetCayley] = root;
-                        node->realize(varMap(activeVals));
-                        std::cout << "Source Flip: " << node->dropFlip().first << "Target Flip: " << node->dropFlip().second << std::endl;
-                    } catch(const char* msg) {
-                        std::cout << msg << std::endl;
-                        j++;
-                        continue;
+                if(freeVarSet.empty()) {
+                    roots = RootFinder::findZeros(slicedInter, 3, node->targetLength * 0.1);
+                    if(!roots.size()) {
+                        // std::cout << "    Found no roots" << std::endl;
+                        roots = RootFinder::findZeros(slicedInter, 3, -node->targetLength * 0.1);
+                        if(!roots.size()) {
+                            // std::cout << "    Found no roots" << std::endl;
+                            continue;
+                        }
                     }
+                } else {
+                    continue;
                 }
-                if(j < roots.size()) {
-                    rootList[i].push_back(roots[j]);
+            }
+            if(freeVarSet.empty()) {
+                for(const auto &root : roots) {
+                    rootList[i].push_back(root);
                 }
             } else {
-                rootList[i].push_back(roots.front());
+                if(roots.size() >= 2) {
+                    std::cout << "    Found " << roots.size() << " roots. Using the nearest one this time." << std::endl;
+                    //std::cout << "ControlPoints:" << std::endl << slicedInter.getControlPoints() << std::endl;
+                    //std::cout << "x: " << std::endl;
+                    //auto tableX = dataTable[i].getTableX();
+                    //for(const auto &table : tableX) {
+                    //    for(const auto &x : table) {
+                    //        std::cout << x << std::endl;
+                    //    }
+                    //}
+                    //std::cout << "y: " << std::endl;
+                    //for(const auto &y : dataTable[i].getVectorY()) {
+                    //    std::cout << y << std::endl;
+                    //}
+                    //RootFinder::findZeros(slicedInter, 3);
+                    unsigned j = 0;
+                    double minDiff;
+                    bool firstRoot = true;
+                    for(unsigned k = 0; k < roots.size(); k++) {
+                        try{
+                            activeVals[targetCayley] = roots[k];
+                            node->realize(varMap(activeVals));
+                            //node->exportGraphviz(std::to_string(k));
+                            if(firstRoot) {
+                                firstRoot = false;
+                            } else if(minDiff <= abs(node->dropDiff())) {
+                                continue;
+                            }
+                            minDiff = abs(node->dropDiff());
+                            j = k;
+                            //std::cout << "      Source Flip: " << node->dropFlip().first << "Target Flip: " << node->dropFlip().second << std::endl;
+                        } catch(const char* msg) {
+                            std::cout << msg << std::endl;
+                            continue;
+                        }
+                    }
+                    if(j < roots.size()) {
+                        if(minDiff > node->targetLength / 10) {
+                            std::cout << "    The minimum diff: " << minDiff << "is not near enough" << std::endl;
+                        } else {
+                            freeValsList[i].push_back(activeVals);
+                            rootList[i].push_back(roots[j]);
+                        }
+                    }
+                } else {
+                    freeValsList[i].push_back(activeVals);
+                    rootList[i].push_back(roots.front());
+                }
             }
         }
-        /**
-         * If there is only one root, it will be in its own group.
-         */
-        /**
-         * TODO If two roots are close enough, we will try other combinations.
-         */
     }
 
     std::vector<Domain> newDomainList;
@@ -322,8 +358,10 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
             * Since there is no sample values for free variables,
             * there is only one root in each rootList.
             */
-            newSolutionList.push_back(BlackBox<>::constFunc(rootList[i].front()));
-            newDomainList.push_back(Domain());
+            for(const auto &root : rootList[i]) {
+                newSolutionList.push_back(BlackBox<>::constFunc(root));
+                newDomainList.push_back(Domain());
+            }
             continue;
         }
         Domain newDomain;
@@ -363,7 +401,7 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
             std::cout << "    Not enough roots to interpolating." << std::endl;
             continue;
         }
-        std::cout << "    Interpolating " << dataTable.getNumSamples() << "roots." << std::endl;
+        std::cout << "    Interpolating " << dataTable.getNumSamples() << " roots." << std::endl;
         SPLINTER::BSpline *bspline = new SPLINTER::BSpline(SPLINTER::BSpline::Builder(dataTable).degree(3).build());
         // auto x = bspline.getControlPoints();
         // std::cout << x << std::endl;
@@ -376,7 +414,6 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
         }, freeVarSet);
         /*
          * Test
-         */
         std::unordered_map<unsigned, std::vector<double>> testSamples;
         for(const auto &freeVar : freeVarSet) {
             double begin = newDomain.at(freeVar).first;
@@ -394,11 +431,12 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
                 // auto x =
                 // std::cout << x << std::endl;
                 auto x = dataTable.getTableX()[0];
-                auto y =dataTable.getVectorY();
+                auto y = dataTable.getVectorY();
                 std::cout << bspline->getControlPoints() << std::endl;
             }
 
         }
+         */
         newDomainList.push_back(newDomain);
         newSolutionList.push_back(newSolution);
     }
