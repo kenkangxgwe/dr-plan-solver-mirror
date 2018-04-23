@@ -4,9 +4,12 @@
 * [**CMake**](https://cmake.org) >=3.5.*
 * [**Boost Graph Library**](https://www.boost.org/doc/libs/release/libs/graph/)  
 Use MinGW or [vcpkg](https://github.com/Microsoft/vcpkg) to integrate Boost with Windows.
-* [**Splinter**](https://github.com/bgrimstad/splinter) Download the corresponding version of splinter library [here](https://github.com/bgrimstad/splinter/releases).
-* [**GraphViz**](https://www.graphviz.org/) (neato) to generate pictures from .dot files. (Optional)
+* [**Splinter**](https://github.com/bgrimstad/splinter) for multi-variant interpolation.  
+Header files are included in `./include/`.  
+Download the latest version of splinter library [here](https://github.com/bgrimstad/splinter/releases).
 * [**Boost Libraries**](https://www.boost.org/) for libraries like [Program Options](https://www.boost.org/doc/libs/release/libs/program_options/).
+* [**GraphViz**](https://www.graphviz.org/) (neato) to generate pictures from .dot files. (Optional)
+* [**Cotire**](https://github.com/sakra/cotire) to generate pre-compiled header to speed up builds. (Included)
 
 ## Build
 1. git clone this repository.  
@@ -77,3 +80,10 @@ Use MinGW or [vcpkg](https://github.com/Microsoft/vcpkg) to integrate Boost with
 `DRPLAN -f "3,5,6,9,12,13,15,16,18,19,21,24,26,28" -s 25 examples/zig-zag-7.dot`
 3. __Solution__  
 ![ZigZag7Solution1](./examples/zig-zag-7.sol-1.dot.png)
+
+## LICENSE
+DRPLAN is free software: you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. See [LICENSE](./LICENSE) file for license rights and limitations
+(GPL).
