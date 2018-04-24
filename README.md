@@ -1,5 +1,9 @@
 # DR-plan Solver
 
+Takes a planar graph with edge distances that is minimally rigid in 2D and a flex DR-plan (a recursive decomposition into minimally 
+rigid, maximal proper subgraphs) as input, and a desired flip (orientation) of a 2D realization of the vertices as points 
+that achieves the edge distances. Outputs the realization.
+
 ## Requirements
 * [**CMake**](https://cmake.org) >=3.5.*
 * [**Boost Graph Library**](https://www.boost.org/doc/libs/release/libs/graph/)  
