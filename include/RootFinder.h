@@ -21,7 +21,7 @@
 
 class RootFinder {
 public:
-    static std::vector<double> findZeros(SPLINTER::BSpline bs, unsigned deg);
+    static std::vector<double> findZeros(SPLINTER::BSpline bs, unsigned deg, double tol = 0.0f);
 
 private:
     static bool findAZero(SPLINTER::BSpline bs, unsigned deg, unsigned k, double &zero);

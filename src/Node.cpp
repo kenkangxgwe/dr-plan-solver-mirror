@@ -36,60 +36,27 @@ void Node::realize(std::unordered_map<unsigned, double> valMap)
     OutEdgeIter<TTGT> oe_start, oe, oe_end;
     VerIter<TTGT> vi, vi_end;
     tie(vi, vi_end) = vertices(subG);
-    VerIter<TTGT> vfirst = vertices(subG).first;
-    auto xMap = get(&Point::x, subG);
-    auto yMap = get(&Point::y, subG);
-    put(xMap, *vfirst, 0);
-    put(yMap, *vfirst, 0);
-    subG[*vfirst].setXY(0, 0); ///< First vertex.
-    vi++;
-    tie(oe_start, oe_end) = out_edges(*vi, subG);
-    for(oe = oe_start; oe != oe_end; ++oe) {
-        if(target(*oe, subG) < *vi) {
-            subG[*vi].setXY(subG[*oe].distance, 0); ///< Second vertex
-//            VerDesc<TTGT> vd = *vi;
-//            std::cout << "vd: " << vd << std::endl;
-//            put(xMap, *vi, subG[*oe].distance);
-//            put(yMap, *vi, 0);
-            break;
-        }
-    }
-    vi++;
-    //    if(get(eIndexMap, reflex->droppedEdge) == 58) {
-    //        std::cout << "This is Edge 58." << std::endl;
-    //        printDRplan();
-    //    }
+    subG[*vi].setXY(0, 0); ///< First vertex.
+    ++vi;
+    subG[*vi].setXY(subG[subG[*vi].pointReflex->e1].distance, 0); ///< Second vertex
+    ++vi;
     for(; vi != vi_end; ++vi) {
+        EdgeDesc<TTGT> &e1 = subG[*vi].pointReflex->e1;
+        EdgeDesc<TTGT> &e2 = subG[*vi].pointReflex->e2;
         VerDesc<TTGT> v1, v2;
-        EdgeDesc<TTGT> e1, e2;
         double d1, d2;
         bool firstEdge = true;
-        tie(oe_start, oe_end) = out_edges(*vi, subG);
-        for(oe = oe_start; oe != oe_end; ++oe) {
-            if(target(*oe, subG) < *vi) {
-                if(subG[*oe].edge_type == EdgeType::dropped) {
-                    continue;
-                }
-                if(firstEdge) {
-                    e1 = *oe;
-                    v1 = target(*oe, subG); ///< First vertex
-                    if(subG[e1].edge_type == EdgeType::added) {
-                        d1 = valMap[get(eIndexMap, *oe)];
-                    } else {
-                        d1 = subG[e1].distance;
-                    }
-                    firstEdge = false;
-                } else {
-                    e2 = *oe;
-                    v2 = target(*oe, subG); ///< Second vertex
-                    if(subG[e2].edge_type == EdgeType::added) {
-                        d2 = valMap[get(eIndexMap, *oe)];
-                    } else {
-                        d2 = subG[e2].distance;
-                    }
-                    break;
-                }
-            }
+        v1 = target(e1, subG); ///< First vertex
+        if(subG[e1].edge_type == EdgeType::added) {
+            d1 = valMap[get(eIndexMap, e1)];
+        } else {
+            d1 = subG[e1].distance;
+        }
+        v2 = target(e2, subG); ///< Second vertex
+        if(subG[e2].edge_type == EdgeType::added) {
+            d2 = valMap[get(eIndexMap, e2)];
+        } else {
+            d2 = subG[e2].distance;
         }
 
         double dx = subG[v1].x - subG[v2].x;
@@ -151,7 +118,6 @@ double Node::dropDiff()
  */
 void Node::calcInterval()
 {
-    auto GraphBundle = boost::local_property<boost::graph_bundle_t>(boost::graph_bundle);
     TTGT &subG = reflex->graphRef;
     auto eIndexMap = get(edge_index_t(), subG);
     EdgeIter<TTGT> ei;
@@ -225,8 +191,8 @@ void Node::generateDRplan()
             targetLength = subG[*ei].distance;
             reflex->droppedEdge = *ei;
         } else {
-            unsigned vs = get(vIndexMap, source(*ei, subG));
-            unsigned vt = get(vIndexMap, target(*ei, subG));
+            unsigned vs = (unsigned)get(vIndexMap, source(*ei, subG));
+            unsigned vt = (unsigned)get(vIndexMap, target(*ei, subG));
             TTGT &subNode = subG.create_subgraph(v1, v1 + (vs > vt ? vs : vt) + 1);
             subNodes.push_back(&subNode[GraphBundle]);
             subNode[GraphBundle].reflex = new Reflex(subNode);

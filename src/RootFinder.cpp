@@ -20,7 +20,7 @@
 
 using namespace SPLINTER;
 
-std::vector<double> RootFinder::findZeros(BSpline bs, unsigned deg)
+std::vector<double> RootFinder::findZeros(BSpline bs, unsigned deg, double tol)
 {
     std::vector<double> zeros;
     DenseMatrix c = bs.getControlPoints();

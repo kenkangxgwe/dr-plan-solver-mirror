@@ -33,7 +33,10 @@ using VerDesc = typename boost::graph_traits<GraphType>::vertex_descriptor;
 template<typename GraphType>
 using EdgeDesc = typename boost::graph_traits<GraphType>::edge_descriptor;
 
-namespace DRPLAN {
+namespace DRPLAN
+{
+
+struct PointReflex;
 
 /**
  * Vertex Bundled Properties
@@ -51,28 +54,33 @@ struct Point
     };
 
     Point(double x = 0, double y = 0)
-            :x(x), y(y)
+            : x(x), y(y)
     {
     };
 
-    void setXY(double x, double y) {
+    void setXY(double x, double y)
+    {
         this->x = x;
         this->y = y;
     }
 
-    std::string toString() {
+    std::string toString()
+    {
         return "(" + std::to_string(x) + ", " + std::to_string(y) + ")";
     }
 
+    PointReflex *pointReflex;
     double x, y;
 };
 
-enum EdgeType { partial, dropped, added };
+enum EdgeType
+{
+    partial, dropped, added
+};
 
 /**
  * Edge Bundled Properties
  */
-
 struct Link
 {
     static double getEps()
@@ -81,8 +89,7 @@ struct Link
     }
 
     Link()
-            :distance(100.0f), interval(std::make_pair(getEps(), 200.0f - getEps()))
-    {}
+            : distance(100.0f), interval(std::make_pair(getEps(), 200.0f - getEps())) {}
 
     EdgeType edge_type;
     double distance;
@@ -90,29 +97,31 @@ struct Link
 };
 
 struct Reflex;
+
 class TwoTree;
 
 struct Node
 {
-    double targetLength = 100;
-    Reflex *reflex;
-    void generateDRplan();
-    void printDRplan() const;
-    void exportGraphviz(std::string = "") const;
-    void realize(std::unordered_map<unsigned, double>);
-    void calcInterval();
-    const TwoTree *tt;
-    bool isCayleyNode = false;
-    std::pair<double, double> interval;
-    std::vector<unsigned> freeCayley;
-    std::vector<unsigned> allCayley;
-    unsigned targetDrop;
-    unsigned targetCayley;
-    double dropDiff();
-    std::pair<double, double> dropFlip();
-    void findFlip();
-    std::vector<Node *> subNodes;
-    std::string toString() const;
+    void generateDRplan(); ///< Generates the DR-Plan beneath current DR-Node.
+    void printDRplan() const; ///< Prints the generated DR-Plan.
+    void exportGraphviz(std::string = "") const; ///< Exports GraphViz dot file.
+    void realize(std::unordered_map<unsigned, double>);  ///< Realizes the DR-Plan.
+    void calcInterval(); ///< Calculates the interval of Cayley node.
+    double dropDiff(); ///< Calculates the difference in length between actual and expect target dropped edge.
+    std::pair<double, double> dropFlip(); ///< Determines the dropped edge's flip.
+    void findFlip(); ///< Find the vertices that determine the dropped edge's flip.
+    std::string toString() const; ///< Describes current DR-Node.
+
+    Reflex *reflex; ///< A pointer avoiding cross-reference
+    const TwoTree *tt; ///< A Pointer to the root two-tree
+    bool isCayleyNode = false; ///< A predication whether the DR-Node is a Cayley node
+    std::pair<double, double> interval; ///< The interval of sampling
+    std::vector<unsigned> freeCayley; ///< All free Cayley parameters in this this and sub nodes
+    std::vector<unsigned> allCayley; ///< All cayley parameters in this this and sub nodes
+    double targetLength = 100; ///< The length of the target dropped edge
+    unsigned targetDrop; ///< The index of dropped edge
+    unsigned targetCayley; ///< The index of target Cayley parameter
+    std::vector<Node *> subNodes; ///< A list of sub DR-Nodes pointers.
 };
 
 typedef boost::subgraph<
@@ -132,13 +141,23 @@ typedef boost::subgraph<
                 boost::vecS ///< EdgeList
         >> TTGT; ///< Two Tree Graph Type
 
+/**
+ * The struct that saves the two edges that connect a vertex to the two-tree.
+ */
+struct PointReflex
+{
+    EdgeDesc<TTGT> e1; ///< The first edge descriptor
+    EdgeDesc<TTGT> e2; ///< The second edge descriptor
+};
+
 struct Reflex
 {
-    Reflex(TTGT &g) :graphRef(g) {};
+    Reflex(TTGT &g) : graphRef(g) {};
+
     ~Reflex() {};
-    TTGT &graphRef;
-    EdgeDesc<TTGT> targetEdge;
-    EdgeDesc<TTGT> droppedEdge;
+    TTGT &graphRef; ///< The root two-tree
+    EdgeDesc<TTGT> targetEdge; ///< The dropped flip edge descriptor
+    EdgeDesc<TTGT> droppedEdge; /// < The target dropped edge descriptor
 };
 
 class TwoTree
@@ -155,10 +174,12 @@ public:
         Flip();
         Flip(unsigned);
         ~Flip();
-        bool operator[] (unsigned i) const { return flip[i]; }
         void next();
         bool isBegin();
         bool flipAt(unsigned);
+
+        bool operator[](unsigned i) const { return flip[i]; }
+
     private:
         std::vector<bool> flip;
     };
@@ -177,6 +198,7 @@ public:
     Flip dropFlip;
 
 private:
+    void getSupportEdges();
     const boost::local_property<boost::graph_bundle_t> GraphBundle;
 };
 

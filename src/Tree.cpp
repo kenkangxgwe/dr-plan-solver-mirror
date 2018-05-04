@@ -197,8 +197,8 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
     std::vector<double> rootList[4];
     const double targetBegin = domain.at(targetCayley).first;
     const double targetEnd = domain.at(targetCayley).second;
-    double dstp = (targetEnd - targetBegin) / 60;
-    double tol = (targetEnd - targetBegin) / 100;
+    double dstp = (targetEnd - targetBegin) / sampleNum / 2;
+    double tol = (targetEnd - targetBegin) / sampleNum / 5;
     double maxstp = (targetEnd - targetBegin) / sampleNum;
     Enumeration<unsigned, double> enumFree(sampleList, freeVarSet);
     for(auto enumer = enumFree.begin(); enumer != enumFree.end(); ++enumer) {
@@ -225,7 +225,7 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
                 }
                 double srcFlip, tarFlip;
                 std::tie(srcFlip, tarFlip) = node->dropFlip();
-               if(freeVarSet.empty()) {
+                if(freeVarSet.empty()) {
                     node->exportGraphviz("s" + std::to_string(suffix++));
                 }
                 if (initial) {
@@ -415,7 +415,7 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
             dataTable.addSample(freeVals, rootList[i][j]);
         }
         if(dataTable.getNumSamples() <= 4) {
-            std::cout << "    Not enough roots to interpolating." << std::endl;
+            std::cout << "    Not enough roots to interpolating. Only " << dataTable.getNumSamples() << " was found." << std::endl;
             continue;
         }
         std::cout << "    Interpolating " << dataTable.getNumSamples() << " roots." << std::endl;
