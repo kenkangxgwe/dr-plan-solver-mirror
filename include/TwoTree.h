@@ -43,12 +43,12 @@ struct PointReflex;
  */
 struct Point
 {
-    static double distance(Point a, Point b)
+    static inline double distance(const Point a, const Point b)
     {
         return sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2));
     };
 
-    static double CCW(Point a, Point b, Point c)
+    static inline double CCW(const Point a, const Point b, const Point c)
     {
         return (-a.y * b.x + a.x * b.y + a.y * c.x - b.y * c.x - a.x * c.y + b.x * c.y);
     };
@@ -58,13 +58,13 @@ struct Point
     {
     };
 
-    void setXY(double x, double y)
+    void setXY(const double x, const double y)
     {
         this->x = x;
         this->y = y;
     }
 
-    std::string toString()
+    std::string toString() const
     {
         return "(" + std::to_string(x) + ", " + std::to_string(y) + ")";
     }
@@ -73,19 +73,79 @@ struct Point
     double x, y;
 };
 
-enum EdgeType
+inline std::ostream& operator<<(std::ostream & os, const Point pt) {
+    return os << pt.toString();
+}
+
+enum class EdgeType:unsigned
 {
-    partial, dropped, added
+    PARTIAL, DROPPED, ADDED, DISPLACEMENT
 };
+
+inline std::ostream &operator<<(std::ostream &os, const EdgeType type)
+{
+    switch(type) {
+        case EdgeType::PARTIAL: {
+            return os << "Partial";
+        }
+        case EdgeType::ADDED: {
+            return os << "Added";
+        }
+        case EdgeType::DROPPED: {
+            return os << "Dropped";
+        }
+        case EdgeType::DISPLACEMENT: {
+            return os << "Displacement";
+        }
+    }
+}
+
 
 /**
  * Edge Bundled Properties
  */
 struct Link
 {
-    static double getEps()
+    static constexpr const char* PARTIAL_COLOR = "black";
+    static constexpr const char* DROPPED_COLOR = "red";
+    static constexpr const char* ADDED_COLOR = "green";
+    static constexpr const char* DISPLACEMENT_COLOR = "blue";
+
+    static inline double getEps()
     {
         return 2E-8;
+    }
+
+    static inline EdgeType getEdgeType(const std::string color)
+    {
+        if(color == PARTIAL_COLOR) {
+            return EdgeType::PARTIAL;
+        }
+        if(color == DROPPED_COLOR) {
+            return EdgeType::DROPPED;
+        }
+        if(color == ADDED_COLOR) {
+            return EdgeType::ADDED;
+        }
+        throw("There is no corresponding type for color \"" + color + "\".");
+    }
+
+    static inline std::string getEdgeColor(EdgeType type)
+    {
+        switch(type) {
+            case EdgeType::PARTIAL: {
+                return PARTIAL_COLOR;
+            }
+            case EdgeType::DROPPED: {
+                return DROPPED_COLOR;
+            }
+            case EdgeType::ADDED: {
+                return ADDED_COLOR;
+            }
+            case EdgeType::DISPLACEMENT: {
+                return DISPLACEMENT_COLOR;
+            }
+        }
     }
 
     Link()

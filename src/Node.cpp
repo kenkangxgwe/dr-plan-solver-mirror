@@ -29,16 +29,17 @@ namespace DRPLAN
 void Node::realize(std::unordered_map<unsigned, double> valMap)
 {
     TTGT &subG = reflex->graphRef;
+    TTGT &rootG = subG.root();
     if(num_edges(subG) < 3) {
         throw ("Not enough vertices.");
     }
-    auto eIndexMap = get(edge_index_t(), subG);
+    auto eIndexMap = get(edge_index_t(), rootG);
     OutEdgeIter<TTGT> oe_start, oe, oe_end;
     VerIter<TTGT> vi, vi_end;
     tie(vi, vi_end) = vertices(subG);
     subG[*vi].setXY(0, 0); ///< First vertex.
     ++vi;
-    subG[*vi].setXY(subG[subG[*vi].pointReflex->e1].distance, 0); ///< Second vertex
+    subG[*vi].setXY(rootG[subG[*vi].pointReflex->e1].distance, 0); ///< Second vertex
     ++vi;
     for(; vi != vi_end; ++vi) {
         EdgeDesc<TTGT> &e1 = subG[*vi].pointReflex->e1;
@@ -47,16 +48,22 @@ void Node::realize(std::unordered_map<unsigned, double> valMap)
         double d1, d2;
         bool firstEdge = true;
         v1 = target(e1, subG); ///< First vertex
-        if(subG[e1].edge_type == EdgeType::added) {
+        if(rootG[e1].edge_type == EdgeType::ADDED) {
             d1 = valMap[get(eIndexMap, e1)];
         } else {
-            d1 = subG[e1].distance;
+            d1 = rootG[e1].distance;
         }
         v2 = target(e2, subG); ///< Second vertex
-        if(subG[e2].edge_type == EdgeType::added) {
+        EdgeType a = rootG[e2].edge_type;
+        if(rootG[e2].edge_type == EdgeType::ADDED) {
             d2 = valMap[get(eIndexMap, e2)];
         } else {
-            d2 = subG[e2].distance;
+            d2 = rootG[e2].distance;
+        }
+
+        if(Point::distance(subG[*vi], subG[v1]) == d1
+                && Point::distance(subG[*vi], subG[v2]) == d2) {
+            continue;
         }
 
         double dx = subG[v1].x - subG[v2].x;
@@ -122,23 +129,29 @@ void Node::calcInterval()
     auto eIndexMap = get(edge_index_t(), subG);
     EdgeIter<TTGT> ei;
     ei = edges(subG).first;
-    TTGT &rootGraph = subG.root();
+    TTGT &rootG = subG.root();
     VerDesc<TTGT> vs = subG.local_to_global(source(*ei, subG)), vt = subG.local_to_global(
             target(*ei, subG)), va;
     OutEdgeIter<TTGT> oe, oe_end;
     std::unordered_map<VerDesc<TTGT>, EdgeDesc<TTGT>> veMap;
     double lb = 0, ub = 0;
     bool firsTrig = true; ///< if this is the first triangle adjacent to vs and vt.
-    for(tie(oe, oe_end) = out_edges(vs, rootGraph); oe != oe_end; ++oe) {
-        va = target(*oe, rootGraph);
+    for(tie(oe, oe_end) = out_edges(vs, rootG); oe != oe_end; ++oe) {
+        if(rootG[*oe].edge_type == EdgeType::DROPPED) {
+            continue;
+        }
+        va = target(*oe, rootG);
         veMap[va] = *oe;
     }
-    for(tie(oe, oe_end) = out_edges(vt, rootGraph); oe != oe_end; ++oe) {
-        va = target(*oe, rootGraph);
+    for(tie(oe, oe_end) = out_edges(vt, rootG); oe != oe_end; ++oe) {
+        if(rootG[*oe].edge_type == EdgeType::DROPPED) {
+            continue;
+        }
+        va = target(*oe, rootG);
         if(veMap.count(va)) {
             EdgeDesc<TTGT> e1 = veMap.at(va);
-            double tempLb = abs(rootGraph[e1].distance - rootGraph[*oe].distance);
-            double tempUb = rootGraph[e1].distance + rootGraph[*oe].distance;
+            double tempLb = abs(rootG[e1].distance - rootG[*oe].distance);
+            double tempUb = rootG[e1].distance + rootG[*oe].distance;
             if(firsTrig) {
                 lb = tempLb;
                 ub = tempUb;
@@ -182,7 +195,7 @@ void Node::generateDRplan()
      */
     do{
         --ei;
-        if(subG[*ei].edge_type != EdgeType::dropped) {
+        if(subG[*ei].edge_type != EdgeType::DROPPED) {
             continue;
         }
         dropCounter++;
@@ -210,7 +223,7 @@ void Node::generateDRplan()
      */
     unsigned addCounter = 0;
     do {
-        if(subG[*ei].edge_type != EdgeType::added) {
+        if(subG[*ei].edge_type != EdgeType::ADDED) {
             continue;
         }
         addCounter++;
@@ -323,21 +336,7 @@ struct colorWriter
     template<typename Edge>
     void operator()(std::ostream &out, const Edge &e) const
     {
-        std::string color;
-        switch(g[e].edge_type) {
-            case partial:
-                color = "black";
-                break;
-            case dropped:
-                color = "red";
-                break;
-            case added:
-                color = "green";
-                break;
-            default:
-                throw ("unknown edge type.");
-        }
-        out << "[color=\"" << color << "\", penwidth = \"1\"]";
+        out << "[color=\"" << Link::getEdgeColor(g[e].edge_type) << "\", penwidth = \"1\"]";
     }
 
     Graph &g;
@@ -367,28 +366,14 @@ void Node::printDRplan() const
 
         EdgeIter<TTGT> ei, ei_end;
         for(tie(ei, ei_end) = edges(subG); ei != ei_end; ++ei) {
-            switch(subG[*ei].edge_type) {
-                case EdgeType::partial: {
-                    std::cout << "Partial ";
-                }
-                    break;
-                case EdgeType::added: {
-                    std::cout << "Added ";
-                }
-                    break;
-                case EdgeType::dropped: {
-                    std::cout << "Dropped ";
-                }
-                    break;
-            }
-            std::cout << "Edge " << get(eIndexMap, *ei) << ":";
-            std::cout << "d(" << get(vIndexMap, subG.local_to_global(source(*ei, subG))) << ", ";
-            std::cout << get(vIndexMap, subG.local_to_global(target(*ei, subG))) << ") = ";
-            std::cout << subG[*ei].distance << std::endl;
+            std::cout << subG[*ei].edge_type << " Edge " << get(eIndexMap, *ei) << ":"
+                      << "d(" << get(vIndexMap, subG.local_to_global(source(*ei, subG))) << ", "
+                      << get(vIndexMap, subG.local_to_global(target(*ei, subG))) << ") = "
+                      << subG[*ei].distance << std::endl;
         }
     }
-    std::cout << "Node: " << std::endl;
-    std::cout << "Target Function: x_" << targetCayley << "(";
+    std::cout << "Node: " << std::endl
+              << "Target Function: x_" << targetCayley << "(";
     for(auto iter = freeCayley.begin(); iter != freeCayley.end(); ++iter) {
         if(iter != freeCayley.begin()) std::cout << ", ";
         std::cout << "x_" << (*iter);

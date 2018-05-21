@@ -143,12 +143,7 @@ int main(int argc, char *argv[])
         if(drplan.solveTree()) {
             unsigned counter = 0;
             for(const auto &solution : drplan.finalSolutionList) {
-                for(const auto &kvPair : solution) {
-                    std::cout << " x_" << kvPair.first << " = " << std::setw(5) << kvPair.second << "\t";
-                }
-                std::cout << std::endl;
                 tt.realize(solution, std::to_string(counter++));
-                std::cout << std::endl;
             }
         }
         if(!enumerateAll) {

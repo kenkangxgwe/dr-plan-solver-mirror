@@ -67,20 +67,8 @@ struct edge_copier
     template<typename inputEdge, typename outEdge>
     void operator()(const inputEdge &ie, outEdge &oe) const
     {
-        EdgeType edge_type;
         std::string color = get(edge_color_map, ie);
-        if(color == "black") {
-            edge_type = EdgeType::partial;
-        } else if(color == "red") {
-            edge_type = EdgeType::dropped;
-        } else if(color == "green") {
-            edge_type = EdgeType::added;
-        } else {
-            std::cerr << "There is no corresponding type for color \""
-                      << get(edge_color_map, ie) << "\"." << std::endl;
-            throw;
-        }
-        put(edge_type_map, oe, edge_type);
+        put(edge_type_map, oe, Link::getEdgeType(color));
         if(useDist) {
             Point src = parsePos(get(vertex_pos_map, source(ie, ig)));
             Point tar = parsePos(get(vertex_pos_map, target(ie, ig)));
@@ -158,24 +146,29 @@ void TwoTree::printDRplan() const
 
 void TwoTree::realize(std::unordered_map<unsigned, double> valMap, std::string suffix)
 {
+    for(const auto &kvPair : valMap) {
+        std::cout << " x_" << kvPair.first << " = " << std::setw(5) << kvPair.second << "\t";
+    }
+    std::cout << std::endl;
     try {
         graph[GraphBundle].realize(valMap);
         VerIter<graph_t> vi, vi_end;
         EdgeIter<graph_t> ei, ei_end;
         for(tie(vi, vi_end) = vertices(graph); vi != vi_end; ++vi) {
-            std::cout << "Vertex " << *vi << ": ";
-            std::cout << "(x, y) = " << graph[*vi].toString() << std::endl;
+            std::cout << "Vertex " << *vi << ": "
+                      << "(x, y) = " << graph[*vi].toString() << std::endl;
         }
         for(tie(ei, ei_end) = edges(graph); ei != ei_end; ++ei) {
-            std::string edgeName[3] = {"Partial", "Dropped", "Added"};
-            std::cout << edgeName[graph[*ei].edge_type] << "Edge " << *ei << ": ";
-            std::cout << "Actual Length:" << Point::distance(graph[source(*ei, graph)], graph[target(*ei, graph)]);
-            std::cout << "\tExpect Length:" << graph[*ei].distance << std::endl;
+            std::cout << graph[*ei].edge_type << " Edge " << *ei << ": "
+                      << "Expect Length:" << graph[*ei].distance
+                      << "\tActual Length:" << Point::distance(graph[source(*ei, graph)], graph[target(*ei, graph)])
+                      << std::endl;
         }
         graph[GraphBundle].exportGraphviz(suffix);
     } catch(const char *msg) {
         std::cout << msg << std::endl;
     }
+    std::cout << std::endl;
 
 }
 
@@ -208,7 +201,7 @@ void TwoTree::getSupportEdges()
         tie(oe_start, oe_end) = out_edges(*vi, graph);
         for(oe = oe_start; oe != oe_end; ++oe) {
             if(target(*oe, graph) < *vi) {
-                if(graph[*oe].edge_type == EdgeType::dropped) {
+                if(graph[*oe].edge_type == EdgeType::DROPPED) {
                     continue;
                 }
                 if(firstEdge) {
@@ -259,7 +252,7 @@ bool TwoTree::Flip::isBegin()
 
 bool TwoTree::Flip::flipAt(unsigned i)
 {
-    if(i > 2) {
+    if(i > 1) {
         flip[i] = !flip[i];
     }
     return flip[i];

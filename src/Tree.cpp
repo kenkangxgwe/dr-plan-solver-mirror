@@ -17,6 +17,10 @@
 
 #include "Tree.h"
 
+#include "RootFinder.h"
+#include "Enumeration.hpp"
+#include "TwoTree.h"
+
 namespace DRPLAN
 {
 
@@ -87,7 +91,7 @@ bool Tree::solveNode(DRPLAN::Node *curNode)
     /**
      * Solve the current node based on every possible solution.
      */
-    std::cout << "  Solving x_" << curNode->targetCayley << "(";
+    std::cout << "Solving x_" << curNode->targetCayley << "(";
     for(auto iter = curNode->freeCayley.begin(); iter != curNode->freeCayley.end(); ++iter) {
         if(iter != curNode->freeCayley.begin()) {
             std::cout << ", ";
@@ -181,8 +185,9 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
     for(const auto &freeVar : freeVarSet) {
         // sampleList[freeVar] = std::vector<double>();
         double begin = domain.at(freeVar).first;
+        //double end = begin + 3.0f;
         double end = domain.at(freeVar).second;
-        std::cout << "    Sampling x_" << freeVar << " from " << begin << " to " << end << "." << std::endl;
+        std::cout << "  Sampling x_" << freeVar << " from " << begin << " to " << end << "." << std::endl;
         for(unsigned i = 0; i <= sampleNum; i++) {
             sampleList[freeVar].push_back(begin + (double) i * (end - begin) / (double) sampleNum);
         }
@@ -201,6 +206,7 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
     double tol = (targetEnd - targetBegin) / sampleNum / 5;
     double maxstp = (targetEnd - targetBegin) / sampleNum;
     Enumeration<unsigned, double> enumFree(sampleList, freeVarSet);
+    int suffix0 = 0;
     for(auto enumer = enumFree.begin(); enumer != enumFree.end(); ++enumer) {
         DoubleMap activeVals = enumFree.at(enumer); // std::move() needed?
         SPLINTER::DataTable dataTable[4];
@@ -211,11 +217,16 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
         double lastSample = 0.0f;
         double lastResult = 0.0f;
         bool initial = true;
+        bool last = false;
         bool reset = true;
         double lastSrcFlip = 0, lastTarFlip = 0;
         int suffix = 1; // suffix of export graph filename.
-
-        for(double curSample = targetBegin; curSample <= targetEnd; curSample += stp) {
+        suffix0++;
+        for(double curSample = targetBegin; !last; curSample += stp) {
+            if(curSample > targetEnd) {
+                curSample = targetEnd;
+                last = true;
+            }
             activeVals[targetCayley] = curSample;
             try {
                 node->realize(varMap(activeVals));
@@ -225,9 +236,9 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
                 }
                 double srcFlip, tarFlip;
                 std::tie(srcFlip, tarFlip) = node->dropFlip();
-                if(freeVarSet.empty()) {
-                    node->exportGraphviz("s" + std::to_string(suffix++));
-                }
+                //if(freeVarSet.empty()) {
+                //    node->exportGraphviz("f" + std::to_string(suffix0) + "c" + std::to_string(suffix++));
+                //}
                 if (initial) {
                     initial = false;
                 } else if ((srcFlip > 0.f) == (lastSrcFlip > 0.f)
@@ -237,7 +248,7 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
                         curSample = lastSample;
                         initial = true;
                     }
-                    if (abs(curResult - lastResult) < (dstp - tol)) {
+                    if (abs(curResult - lastResult) < (dstp - tol) && abs(curResult) < node->targetLength * 0.1 && (targetEnd - targetBegin) > node->targetLength * 0.1) {
                         if(reset) {
                             stp = maxstp;
                             curSample = lastSample + stp;
@@ -246,7 +257,7 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
                             continue;
                         }
                     }
-                    else if (abs(curResult - lastResult) > (dstp + tol)) {
+                    else if (abs(curResult - lastResult) > (dstp + tol) && abs(curResult) < node->targetLength * 0.1 && (targetEnd - targetBegin) > node->targetLength * 0.1) {
                         reset = false;
                         stp /= 2.0;
                         curSample = lastSample;
@@ -288,12 +299,12 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
             SPLINTER::BSpline slicedInter = SPLINTER::BSpline::Builder(dataTable[i]).degree(3).build();
             std::vector<double> roots = RootFinder::findZeros(slicedInter, 3);
             if(!roots.size()) {
-                // std::cout << "    Found no roots" << std::endl;
+                 //std::cout << "    Found no roots" << std::endl;
                 if(freeVarSet.empty()) {
-                    roots = RootFinder::findZeros(slicedInter, 3, node->targetLength * 0.1);
+                    roots = RootFinder::findZeros(slicedInter, 3, node->targetLength * 0.01);
                     if(!roots.size()) {
                         // std::cout << "    Found no roots" << std::endl;
-                        roots = RootFinder::findZeros(slicedInter, 3, -node->targetLength * 0.1);
+                        roots = RootFinder::findZeros(slicedInter, 3, -node->targetLength * 0.01);
                         if(!roots.size()) {
                             // std::cout << "    Found no roots" << std::endl;
                             continue;

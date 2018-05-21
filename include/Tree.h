@@ -18,10 +18,8 @@
 #pragma once
 
 #include "stdafx.h"
-#include "TwoTree.h"
-#include "RootFinder.h"
 #include "BlackBox.hpp"
-#include "Enumeration.hpp"
+#include "TwoTree.h"
 
 namespace DRPLAN
 {
