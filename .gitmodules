@@ -1,0 +1,3 @@
+[submodule "splinter"]
+	path = externals/splinter
+	url = https://github.com/bgrimstad/splinter
