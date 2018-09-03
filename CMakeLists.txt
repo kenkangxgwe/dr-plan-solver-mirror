@@ -5,7 +5,7 @@ project(DRPLAN)
 set(CMAKE_CXX_STANDARD 11)
 
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
-include(cotire)
+#include(cotire)
 
 set(SOURCE_FILES
         src/stdafx.cpp
@@ -32,6 +32,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
 
 # Cotire for pre-compiled header
-set_target_properties(${PROJECT_NAME} PROPERTIES COTIRE_CXX_PREFIX_HEADER_INIT "include/stdafx.h")
-cotire(${PROJECT_NAME})
+#set_target_properties(${PROJECT_NAME} PROPERTIES COTIRE_CXX_PREFIX_HEADER_INIT "include/stdafx.h")
+#cotire(${PROJECT_NAME})
 
