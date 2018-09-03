@@ -63,8 +63,8 @@ bool Tree::solveNode(DRPLAN::Node *curNode)
          */
         if(solutionList.empty()) {
             assert(domainList.empty());
-            solutionList.push_back(Solution());
-            domainList.push_back(Domain());
+            solutionList.push_back(std::move(Solution()));
+            domainList.push_back(std::move(Domain()));
         }
         /**
          * The variable is not present in existing solution map.
@@ -72,7 +72,7 @@ bool Tree::solveNode(DRPLAN::Node *curNode)
         if(solutionList[0].count(curNode->targetCayley) == 0) {
             assert(domainList[0].count(curNode->targetCayley) == 0);
             for(auto &solution : solutionList) {
-                solution[curNode->targetCayley] = BlackBox<>::projectFunc(curNode->targetCayley);
+                solution[curNode->targetCayley] = std::move(BlackBox<>::projectFunc(curNode->targetCayley));
             }
             for(auto &domain : domainList) {
                 domain[curNode->targetCayley] = curNode->interval;
@@ -107,7 +107,7 @@ bool Tree::solveNode(DRPLAN::Node *curNode)
         MapTransform transformedMap = transformMap(curNode, solution);
         std::vector<BlackBox<>> repList;
         std::vector<Domain> repDomains;
-        std::tie(repList, repDomains) = solveTarget(curNode, transformedMap, domain);
+        std::tie(repList, repDomains) = std::move(solveTarget(curNode, transformedMap, domain));
         std::cout << "  Found " << repList.size() << " representation(s)." << std::endl;
         if(repList.empty()) {
             continue;
@@ -170,7 +170,7 @@ Tree::MapTransform Tree::transformMap(DRPLAN::Node *node, const Tree::Solution &
 }
 
 std::pair<std::vector<BlackBox<>>, std::vector<Tree::Domain>>
-Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) const
+Tree::solveTarget(Node *node, const MapTransform &varMap, const Domain domain) const
 {
     std::unordered_set<unsigned> freeVarSet = varMap.getVarSet();
     const unsigned targetCayley = node->targetCayley;
@@ -208,7 +208,7 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
     Enumeration<unsigned, double> enumFree(sampleList, freeVarSet);
     int suffix0 = 0;
     for(auto enumer = enumFree.begin(); enumer != enumFree.end(); ++enumer) {
-        DoubleMap activeVals = enumFree.at(enumer); // std::move() needed?
+        DoubleMap activeVals(std::move(enumFree.at(enumer))); // std::move() needed?
         SPLINTER::DataTable dataTable[4];
         /**
          * Binary Search (Not implemented. Needed?)
@@ -387,8 +387,8 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
             * there is only one root in each rootList.
             */
             for(const auto &root : rootList[i]) {
-                newSolutionList.push_back(BlackBox<>::constFunc(root));
-                newDomainList.push_back(Domain());
+                newSolutionList.push_back(std::move(BlackBox<>::constFunc(root)));
+                newDomainList.push_back(std::move(Domain()));
             }
             continue;
         }
@@ -433,13 +433,15 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
         SPLINTER::BSpline *bspline = new SPLINTER::BSpline(SPLINTER::BSpline::Builder(dataTable).degree(3).build());
         // auto x = bspline.getControlPoints();
         // std::cout << x << std::endl;
-        auto newSolution = BlackBox<>([=](DoubleMap valMap) -> double {
-            std::vector<double> valList;
-            for(auto &varIndex : freeVarSet) {
-                valList.push_back(valMap[varIndex]);
-            }
-            return bspline->eval(valList);
-        }, freeVarSet);
+        auto newSolution {std::move(
+                BlackBox<>([=](DoubleMap valMap) -> double {
+                    std::vector<double> valList;
+                    for(auto &varIndex : freeVarSet) {
+                        valList.push_back(valMap[varIndex]);
+                    }
+                    return bspline->eval(valList);
+                }, freeVarSet)
+        )};
         /*
          * Test
         std::unordered_map<unsigned, std::vector<double>> testSamples;
@@ -465,10 +467,10 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
 
         }
          */
-        newDomainList.push_back(newDomain);
-        newSolutionList.push_back(newSolution);
+        newDomainList.push_back(std::move(newDomain));
+        newSolutionList.push_back(std::move(newSolution));
     }
-    return std::make_pair(newSolutionList, newDomainList);
+    return std::make_pair(std::move(newSolutionList), std::move(newDomainList));
 }
 
 Tree::Solution Tree::updateSolution(const Tree::Solution &solution, const BlackBox<> &reps, unsigned targetVar) const

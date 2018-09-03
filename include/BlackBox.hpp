@@ -31,7 +31,7 @@ public:
 	* @param value the constant value.
 	* @return the constant function.
 	*/
-	static BlackBox constFunc(R value)
+	static BlackBox constFunc(const R &value)
 	{
 		return BlackBox<K,V,R>([value](std::unordered_map<K, V> valMap) -> R { return value; }, std::unordered_set<K>());
 	};
@@ -49,12 +49,40 @@ public:
 //	const static std::unordered_map<K, V> emptyValMap;
 
 	BlackBox() {};
+
 	BlackBox(std::function<R(std::unordered_map<K, V>)> expression, std::unordered_set<K> indexSet)
 	{
 		this->expression = expression;
 		setVars(indexSet);
 	};
-	~BlackBox() {};
+
+    BlackBox(const BlackBox<K, V, R> &blackbox)
+    {
+        *this = blackbox;
+    }
+
+    BlackBox(BlackBox<K, V, R> &&blackbox) noexcept
+	{
+        *this = std::move(blackbox);
+	}
+
+	~BlackBox() = default;
+
+    BlackBox<K, V, R>& operator=(const BlackBox &blackbox) {
+        expression = blackbox.expression;
+        indexList = blackbox.indexList;
+        indexSet = blackbox.indexSet;
+        return *this;
+    }
+
+    BlackBox<K, V, R>& operator=(BlackBox && blackbox) noexcept {
+        if(this != &blackbox) {
+            expression = std::move(blackbox.expression);
+            indexList = std::move(blackbox.indexList);
+            indexSet = std::move(blackbox.indexSet);
+        }
+        return *this;
+    }
 
 	R evaluate(std::unordered_map<K, V> valMap) const { return expression(valMap); };
 	R operator() (std::unordered_map<K, V> valMap) const { return expression(valMap); };

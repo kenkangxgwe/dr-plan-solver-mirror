@@ -63,7 +63,7 @@ private:
      * @return A list of representations of the target variable.
      */
     std::pair<std::vector<BlackBox<>>, std::vector<Domain>>
-    solveTarget(Node *node, const MapTransform varMap, const Domain domain) const;
+    solveTarget(Node *node, const MapTransform &varMap, const Domain domain) const;
     /**
      * Uses the free variables to replace the target variable wherever it occurs in the previous solution.
      * @param solution the solution map where the representation was solved.
