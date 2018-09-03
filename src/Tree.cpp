@@ -109,7 +109,7 @@ bool Tree::solveNode(DRPLAN::Node *curNode)
         std::vector<Domain> repDomains;
         std::tie(repList, repDomains) = solveTarget(curNode, transformedMap, domain);
         std::cout << "  Found " << repList.size() << " representation(s)." << std::endl;
-        if(!repList.size()) {
+        if(repList.empty()) {
             continue;
         }
         for(const auto &interDomain : repDomains) {
@@ -128,7 +128,7 @@ bool Tree::solveNode(DRPLAN::Node *curNode)
             //}
         }
     }
-    if(!newSolutionList.size()) {
+    if(newSolutionList.empty()) {
         return false;
     }
 
@@ -298,11 +298,11 @@ Tree::solveTarget(Node *node, const MapTransform varMap, const Domain domain) co
             }
             SPLINTER::BSpline slicedInter = SPLINTER::BSpline::Builder(dataTable[i]).degree(3).build();
             std::vector<double> roots = RootFinder::findZeros(slicedInter, 3);
-            if(!roots.size()) {
+            if(roots.empty()) {
                  //std::cout << "    Found no roots" << std::endl;
                 if(freeVarSet.empty()) {
                     roots = RootFinder::findZeros(slicedInter, 3, node->targetLength * 0.01);
-                    if(!roots.size()) {
+                    if(roots.empty()) {
                         // std::cout << "    Found no roots" << std::endl;
                         roots = RootFinder::findZeros(slicedInter, 3, -node->targetLength * 0.01);
                         if(!roots.size()) {
