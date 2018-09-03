@@ -134,8 +134,7 @@ void Node::calcInterval()
             target(*ei, subG)), va;
     OutEdgeIter<TTGT> oe, oe_end;
     std::unordered_map<VerDesc<TTGT>, EdgeDesc<TTGT>> veMap;
-    double lb = 0, ub = 0;
-    bool firsTrig = true; ///< if this is the first triangle adjacent to vs and vt.
+    double lb = 0, ub = DBL_MAX;
     for(tie(oe, oe_end) = out_edges(vs, rootG); oe != oe_end; ++oe) {
         if(rootG[*oe].edge_type == EdgeType::DROPPED) {
             continue;
@@ -152,14 +151,8 @@ void Node::calcInterval()
             EdgeDesc<TTGT> e1 = veMap.at(va);
             double tempLb = abs(rootG[e1].distance - rootG[*oe].distance);
             double tempUb = rootG[e1].distance + rootG[*oe].distance;
-            if(firsTrig) {
-                lb = tempLb;
-                ub = tempUb;
-                firsTrig = false;
-            } else {
-                lb = (lb > tempLb) ? lb : tempLb;
-                ub = (ub < tempUb) ? ub : tempUb;
-            }
+            lb = (lb > tempLb) ? lb : tempLb;
+            ub = (ub < tempUb) ? ub : tempUb;
         }
     }
     interval.first = lb + Link::getEps();
@@ -167,7 +160,6 @@ void Node::calcInterval()
     targetCayley = get(eIndexMap, *ei);
     freeCayley.push_back(targetCayley);
     allCayley = freeCayley;
-    return;
 }
 
 void Node::generateDRplan()

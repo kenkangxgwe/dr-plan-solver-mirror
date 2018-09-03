@@ -258,4 +258,8 @@ bool TwoTree::Flip::flipAt(unsigned i)
     return flip[i];
 };
 
+std::ostream& operator<<(std::ostream & os, const Point &pt) {
+    return os << pt.toString();
+}
+
 }

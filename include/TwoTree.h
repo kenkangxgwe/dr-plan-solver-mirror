@@ -64,6 +64,8 @@ struct Point
         this->y = y;
     }
 
+    friend std::ostream& operator<< (std::ostream&, const Point&);
+
     std::string toString() const
     {
         return "(" + std::to_string(x) + ", " + std::to_string(y) + ")";
@@ -72,10 +74,6 @@ struct Point
     PointReflex *pointReflex;
     double x, y;
 };
-
-inline std::ostream& operator<<(std::ostream & os, const Point pt) {
-    return os << pt.toString();
-}
 
 enum class EdgeType:unsigned
 {
@@ -96,6 +94,9 @@ inline std::ostream &operator<<(std::ostream &os, const EdgeType type)
         }
         case EdgeType::DISPLACEMENT: {
             return os << "Displacement";
+        }
+        default: {
+            throw("Invalide EdgeType.");
         }
     }
 }
@@ -144,6 +145,9 @@ struct Link
             }
             case EdgeType::DISPLACEMENT: {
                 return DISPLACEMENT_COLOR;
+            }
+            default: {
+                throw("Invalide EdgeType.");
             }
         }
     }

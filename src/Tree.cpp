@@ -335,7 +335,7 @@ Tree::solveTarget(Node *node, const MapTransform &varMap, const Domain domain) c
                     //}
                     //RootFinder::findZeros(slicedInter, 3);
                     unsigned j = 0;
-                    double minDiff;
+                    double minDiff = DBL_MAX;
                     bool firstRoot = true;
                     for(unsigned k = 0; k < roots.size(); k++) {
                         try{
