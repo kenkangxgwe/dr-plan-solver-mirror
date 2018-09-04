@@ -204,12 +204,17 @@ void TwoTree::getSupportEdges()
                 if(graph[*oe].edge_type == EdgeType::DROPPED) {
                     continue;
                 }
-                if(firstEdge) {
+                if(firstEdge) { ///< First edge
                     graph[*vi].pointReflex = new PointReflex();
-                    graph[*vi].pointReflex->e1 = *oe; ///< First edge
+                    graph[*vi].pointReflex->e1 = *oe;
                     firstEdge = false;
-                } else {
-                    graph[*vi].pointReflex->e2 = *oe; ///< First edge
+                } else { ///< second edge
+                    if(target(*oe, graph) < target(graph[*vi].pointReflex->e1, graph)) {
+                        graph[*vi].pointReflex->e2 = graph[*vi].pointReflex->e1;
+                        graph[*vi].pointReflex->e1 = *oe;
+                    } else {
+                        graph[*vi].pointReflex->e2 = *oe;
+                    }
                     break;
                 }
             }

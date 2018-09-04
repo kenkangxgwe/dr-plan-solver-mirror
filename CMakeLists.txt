@@ -13,6 +13,7 @@ set(SOURCE_FILES
         src/RootFinder.cpp
         src/Tree.cpp
         src/Node.cpp
+        src/TwoTreeUtils.cpp
         src/main.cpp)
 
 # Include Boost Graph Library

@@ -17,6 +17,7 @@
 
 #include "stdafx.h"
 #include "TwoTree.h"
+#include "TwoTreeUtils.h"
 
 using namespace boost;
 
@@ -29,12 +30,11 @@ namespace DRPLAN
 void Node::realize(std::unordered_map<unsigned, double> valMap)
 {
     TTGT &subG = reflex->graphRef;
-    TTGT &rootG = subG.root();
+    TTGT const &rootG = subG.root();
     if(num_edges(subG) < 3) {
         throw ("Not enough vertices.");
     }
     auto eIndexMap = get(edge_index_t(), rootG);
-    OutEdgeIter<TTGT> oe_start, oe, oe_end;
     VerIter<TTGT> vi, vi_end;
     tie(vi, vi_end) = vertices(subG);
     subG[*vi].setXY(0, 0); ///< First vertex.
@@ -42,19 +42,16 @@ void Node::realize(std::unordered_map<unsigned, double> valMap)
     subG[*vi].setXY(rootG[subG[*vi].pointReflex->e1].distance, 0); ///< Second vertex
     ++vi;
     for(; vi != vi_end; ++vi) {
-        EdgeDesc<TTGT> &e1 = subG[*vi].pointReflex->e1;
-        EdgeDesc<TTGT> &e2 = subG[*vi].pointReflex->e2;
+        EdgeDesc<TTGT> const &e1 = subG[*vi].pointReflex->e1;
+        EdgeDesc<TTGT> const &e2 = subG[*vi].pointReflex->e2;
         VerDesc<TTGT> v1, v2;
+        std::tie(v1, v2) = getSupportiveVertexPair(*vi, subG);
         double d1, d2;
-        bool firstEdge = true;
-        v1 = target(e1, subG); ///< First vertex
         if(rootG[e1].edge_type == EdgeType::ADDED) {
             d1 = valMap[get(eIndexMap, e1)];
         } else {
             d1 = rootG[e1].distance;
         }
-        v2 = target(e2, subG); ///< Second vertex
-        EdgeType a = rootG[e2].edge_type;
         if(rootG[e2].edge_type == EdgeType::ADDED) {
             d2 = valMap[get(eIndexMap, e2)];
         } else {
@@ -62,7 +59,7 @@ void Node::realize(std::unordered_map<unsigned, double> valMap)
         }
 
         if(Point::distance(subG[*vi], subG[v1]) == d1
-                && Point::distance(subG[*vi], subG[v2]) == d2) {
+           && Point::distance(subG[*vi], subG[v2]) == d2) {
             continue;
         }
 
@@ -130,8 +127,9 @@ void Node::calcInterval()
     EdgeIter<TTGT> ei;
     ei = edges(subG).first;
     TTGT &rootG = subG.root();
-    VerDesc<TTGT> vs = subG.local_to_global(source(*ei, subG)), vt = subG.local_to_global(
-            target(*ei, subG)), va;
+    VerDesc<TTGT> vs = subG.local_to_global(source(*ei, subG));
+    VerDesc<TTGT> vt = subG.local_to_global(target(*ei, subG));
+    VerDesc<TTGT> va;
     OutEdgeIter<TTGT> oe, oe_end;
     std::unordered_map<VerDesc<TTGT>, EdgeDesc<TTGT>> veMap;
     double lb = 0, ub = DBL_MAX;

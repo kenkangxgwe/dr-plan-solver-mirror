@@ -237,8 +237,11 @@ Tree::solveTarget(Node *node, const MapTransform &varMap, const Domain domain) c
                 double srcFlip, tarFlip;
                 std::tie(srcFlip, tarFlip) = node->dropFlip();
                 //if(freeVarSet.empty()) {
-                //    node->exportGraphviz("f" + std::to_string(suffix0) + "c" + std::to_string(suffix++));
-                //}
+                //if(freeVarSet.size() == 2) {
+                //if(true) {
+                if(false) {
+                    node->exportGraphviz("f" + std::to_string(suffix0) + "c" + std::to_string(suffix++));
+                }
                 if (initial) {
                     initial = false;
                 } else if ((srcFlip > 0.f) == (lastSrcFlip > 0.f)
@@ -357,7 +360,7 @@ Tree::solveTarget(Node *node, const MapTransform &varMap, const Domain domain) c
                     }
                     if(j < roots.size()) {
                         if(minDiff > node->targetLength / 10) {
-                            std::cout << "    The minimum diff: " << minDiff << "is not near enough" << std::endl;
+                            std::cout << "    The minimum diff: " << minDiff << " is not near enough" << std::endl;
                         } else {
                             freeValsList[i].push_back(activeVals);
                             rootList[i].push_back(roots[j]);
