@@ -94,8 +94,8 @@ std::pair<double, double> Node::dropFlip()
     TTGT &subG = reflex->graphRef;
     auto v1 = source(reflex->droppedEdge, subG);
     auto v2 = target(reflex->droppedEdge, subG);
-    auto v3 = source(reflex->targetEdge, subG);
-    auto v4 = target(reflex->targetEdge, subG);
+    auto v3 = source(reflex->flipEdge, subG);
+    auto v4 = target(reflex->flipEdge, subG);
     double sourceFlip, targetFlip;
     sourceFlip = Point::CCW(subG[v1], subG[v2], subG[v3]);
     targetFlip = Point::CCW(subG[v1], subG[v2], subG[v4]);
@@ -159,6 +159,38 @@ void Node::calcInterval()
     freeCayley.push_back(targetCayley);
     allCayley = freeCayley;
 }
+
+std::pair<double, double> Node::refineInterval(std::unordered_map<unsigned, double> valMap)
+{
+    TTGT &subG = reflex->graphRef;
+    TTGT &rootG = subG.root();
+    auto eIndexMap = get(edge_index_t(), rootG);
+    EdgeDesc<TTGT> et = reflex->targetEdge;
+    VerDesc<TTGT> vt = findTargetVertex(et, subG);
+    VerDesc<TTGT> v1, v2;
+    std::tie(v1, v2) = getSupportiveVertexPair(vt, subG);
+    EdgeDesc<TTGT> e0 = findCommonEdge(v1, v2, rootG);
+    EdgeDesc<TTGT> e1;
+    if(et == subG[vt].pointReflex->e1) {
+        e1 = subG[vt].pointReflex->e2;
+    } else {
+        e1 = subG[vt].pointReflex->e1;
+    }
+    double d1, d2;
+    if(rootG[e0].edge_type == EdgeType::ADDED) {
+        d1 = valMap[get(eIndexMap, e0)];
+    } else {
+        d1 = rootG[e0].distance;
+    }
+    if(rootG[e1].edge_type == EdgeType::ADDED) {
+        d2 = valMap[get(eIndexMap, e1)];
+    } else {
+        d2 = rootG[e1].distance;
+    }
+
+    return std::make_pair(abs(d1 - d2), d1 + d2);
+}
+
 
 void Node::generateDRplan()
 {
@@ -250,7 +282,6 @@ void Node::generateDRplan()
         } while(++ei != ei_end);
     }
     findFlip();
-    return;
 }
 
 void Node::findFlip()
@@ -260,17 +291,12 @@ void Node::findFlip()
     auto d2 = target(reflex->droppedEdge, subG);
     auto t1 = source(reflex->targetEdge, subG);
     auto t2 = target(reflex->targetEdge, subG);
-    double sourceFlip, targetFlip;
     if(t1 == d1 || t1 == d2) {
         auto tf = t2;
         t2 = t1;
         t1 = tf;
-    } else if(t2 == d1 || t2 == d2) {
-        auto tf = t1;
-        t1 = t2;
-        t2 = tf;
-    } else {
-        return;
+    } else if(t2 != d1 && t2 != d2) {
+        reflex->flipEdge = reflex->targetEdge;
     }
     OutEdgeIter<TTGT> eo, eo_end;
     std::unordered_map<VerDesc<TTGT>, EdgeDesc<TTGT>> veMap;
@@ -285,11 +311,10 @@ void Node::findFlip()
     std::tie(va, va_end) = adjacent_vertices(t2, subG);
     for(; va != va_end; ++va) {
         if(veMap.count(*va)) {
-            reflex->targetEdge = veMap.at(*va);
+            reflex->flipEdge = veMap.at(*va);
             break;
         }
     }
-    return;
 }
 
 std::string Node::toString() const

@@ -200,11 +200,6 @@ Tree::solveTarget(Node *node, const MapTransform &varMap, const Domain domain) c
      */
     std::vector<DoubleMap> freeValsList[4];
     std::vector<double> rootList[4];
-    const double targetBegin = domain.at(targetCayley).first;
-    const double targetEnd = domain.at(targetCayley).second;
-    double dstp = (targetEnd - targetBegin) / sampleNum / 2;
-    double tol = (targetEnd - targetBegin) / sampleNum / 5;
-    double maxstp = (targetEnd - targetBegin) / sampleNum;
     Enumeration<unsigned, double> enumFree(sampleList, freeVarSet);
     int suffix0 = 0;
     for(auto enumer = enumFree.begin(); enumer != enumFree.end(); ++enumer) {
@@ -213,7 +208,6 @@ Tree::solveTarget(Node *node, const MapTransform &varMap, const Domain domain) c
         /**
          * Binary Search (Not implemented. Needed?)
          */
-        double stp =  maxstp;
         double lastSample = 0.0f;
         double lastResult = 0.0f;
         bool initial = true;
@@ -222,6 +216,21 @@ Tree::solveTarget(Node *node, const MapTransform &varMap, const Domain domain) c
         double lastSrcFlip = 0, lastTarFlip = 0;
         int suffix = 1; // suffix of export graph filename.
         suffix0++;
+        double lb, ub;
+        std::tie(lb, ub) = node->refineInterval(varMap(activeVals));
+        double targetBegin = domain.at(targetCayley).first;
+        double targetEnd = domain.at(targetCayley).second;
+        if(targetBegin < lb) {
+            targetBegin = lb;
+        }
+        if(targetEnd > ub) {
+            targetEnd = ub;
+        }
+        double dstp = (targetEnd - targetBegin) / sampleNum / 2;
+        double tol = (targetEnd - targetBegin) / sampleNum / 5;
+        double maxstp = (targetEnd - targetBegin) / sampleNum;
+        double stp =  maxstp;
+
         for(double curSample = targetBegin; !last; curSample += stp) {
             if(curSample > targetEnd) {
                 curSample = targetEnd;

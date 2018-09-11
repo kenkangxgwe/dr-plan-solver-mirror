@@ -171,6 +171,7 @@ struct Node
     void exportGraphviz(std::string = "") const; ///< Exports GraphViz dot file.
     void realize(std::unordered_map<unsigned, double>);  ///< Realizes the DR-Plan.
     void calcInterval(); ///< Calculates the interval of Cayley node.
+    std::pair<double, double> refineInterval(std::unordered_map<unsigned, double>); ///< Refines the interval of Cayley parameter according to triangle inequality.
     double dropDiff(); ///< Calculates the difference in length between actual and expect target dropped edge.
     std::pair<double, double> dropFlip(); ///< Determines the dropped edge's flip.
     void findFlip(); ///< Find the vertices that determine the dropped edge's flip.
@@ -222,6 +223,7 @@ struct Reflex
     TTGT &graphRef; ///< The root two-tree
     EdgeDesc<TTGT> targetEdge; ///< The dropped flip edge descriptor
     EdgeDesc<TTGT> droppedEdge; /// < The target dropped edge descriptor
+    EdgeDesc<TTGT> flipEdge; ///< The dropped flip edge descriptor
 };
 
 class TwoTree

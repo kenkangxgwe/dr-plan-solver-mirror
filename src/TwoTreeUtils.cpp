@@ -44,7 +44,7 @@ EdgeDesc<TTGT> findCommonEdge(VerDesc<TTGT> const &v1, VerDesc<TTGT> const &v2, 
     OutEdgeIter<TTGT> oe, oe_end;
     for(std::tie(oe, oe_end) = out_edges(v1, graph); oe != oe_end; ++oe) {
         if(target(*oe, graph) == v2) {
-             return *oe;
+            return *oe;
         }
     }
     throw("There is no common edges between the two input vertices.");
