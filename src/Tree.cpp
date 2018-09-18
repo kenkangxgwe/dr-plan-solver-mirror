@@ -308,77 +308,83 @@ Tree::solveTarget(Node *node, const MapTransform &varMap, const Domain domain) c
 //                std::cout << "    Not enough sample points." << std::endl;
                 continue;
             }
-            SPLINTER::BSpline slicedInter = SPLINTER::BSpline::Builder(dataTable[i]).degree(3).build();
-            std::vector<double> roots = RootFinder::findZeros(slicedInter, 3);
-            if(roots.empty()) {
-                 //std::cout << "    Found no roots" << std::endl;
-                if(freeVarSet.empty()) {
-                    roots = RootFinder::findZeros(slicedInter, 3, node->targetLength * 0.01);
-                    if(roots.empty()) {
-                        // std::cout << "    Found no roots" << std::endl;
-                        roots = RootFinder::findZeros(slicedInter, 3, -node->targetLength * 0.01);
-                        if(!roots.size()) {
+            try{
+                SPLINTER::BSpline slicedInter = SPLINTER::BSpline::Builder(dataTable[i]).degree(3).build();
+                std::vector<double> roots = RootFinder::findZeros(slicedInter, 3);
+                if(roots.empty()) {
+                    //std::cout << "    Found no roots" << std::endl;
+                    if(freeVarSet.empty()) {
+                        roots = RootFinder::findZeros(slicedInter, 3, node->targetLength * 0.01);
+                        if(roots.empty()) {
                             // std::cout << "    Found no roots" << std::endl;
-                            continue;
-                        }
-                    }
-                } else {
-                    continue;
-                }
-            }
-            if(freeVarSet.empty()) {
-                for(const auto &root : roots) {
-                    rootList[i].push_back(root);
-                }
-            } else {
-                if(roots.size() >= 2) {
-                    std::cout << "    Found " << roots.size() << " roots. Using the nearest one this time." << std::endl;
-                    //std::cout << "ControlPoints:" << std::endl << slicedInter.getControlPoints() << std::endl;
-                    //std::cout << "x: " << std::endl;
-                    //auto tableX = dataTable[i].getTableX();
-                    //for(const auto &table : tableX) {
-                    //    for(const auto &x : table) {
-                    //        std::cout << x << std::endl;
-                    //    }
-                    //}
-                    //std::cout << "y: " << std::endl;
-                    //for(const auto &y : dataTable[i].getVectorY()) {
-                    //    std::cout << y << std::endl;
-                    //}
-                    //RootFinder::findZeros(slicedInter, 3);
-                    unsigned j = 0;
-                    double minDiff = DBL_MAX;
-                    bool firstRoot = true;
-                    for(unsigned k = 0; k < roots.size(); k++) {
-                        try{
-                            activeVals[targetCayley] = roots[k];
-                            node->realize(varMap(activeVals));
-                            //node->exportGraphviz(std::to_string(k));
-                            if(firstRoot) {
-                                firstRoot = false;
-                            } else if(minDiff <= abs(node->dropDiff())) {
+                            roots = RootFinder::findZeros(slicedInter, 3, -node->targetLength * 0.01);
+                            if(!roots.size()) {
+                                // std::cout << "    Found no roots" << std::endl;
                                 continue;
                             }
-                            minDiff = abs(node->dropDiff());
-                            j = k;
-                            //std::cout << "      Source Flip: " << node->dropFlip().first << "Target Flip: " << node->dropFlip().second << std::endl;
-                        } catch(const char* msg) {
-                            std::cout << msg << std::endl;
-                            continue;
                         }
+                    } else {
+                        continue;
                     }
-                    if(j < roots.size()) {
-                        if(minDiff > node->targetLength / 10) {
-                            std::cout << "    The minimum diff: " << minDiff << " is not near enough" << std::endl;
-                        } else {
-                            freeValsList[i].push_back(activeVals);
-                            rootList[i].push_back(roots[j]);
-                        }
+                }
+                if(freeVarSet.empty()) {
+                    for(const auto &root : roots) {
+                        rootList[i].push_back(root);
                     }
                 } else {
-                    freeValsList[i].push_back(activeVals);
-                    rootList[i].push_back(roots.front());
+                    if(roots.size() >= 2) {
+                        std::cout << "    Found " << roots.size() << " roots. Using the nearest one this time." << std::endl;
+                        //std::cout << "ControlPoints:" << std::endl << slicedInter.getControlPoints() << std::endl;
+                        //std::cout << "x: " << std::endl;
+                        //auto tableX = dataTable[i].getTableX();
+                        //for(const auto &table : tableX) {
+                        //    for(const auto &x : table) {
+                        //        std::cout << x << std::endl;
+                        //    }
+                        //}
+                        //std::cout << "y: " << std::endl;
+                        //for(const auto &y : dataTable[i].getVectorY()) {
+                        //    std::cout << y << std::endl;
+                        //}
+                        //RootFinder::findZeros(slicedInter, 3);
+                        unsigned j = 0;
+                        double minDiff = DBL_MAX;
+                        bool firstRoot = true;
+                        for(unsigned k = 0; k < roots.size(); k++) {
+                            try{
+                                activeVals[targetCayley] = roots[k];
+                                node->realize(varMap(activeVals));
+                                //node->exportGraphviz(std::to_string(k));
+                                if(firstRoot) {
+                                    firstRoot = false;
+                                } else if(minDiff <= abs(node->dropDiff())) {
+                                    continue;
+                                }
+                                minDiff = abs(node->dropDiff());
+                                j = k;
+                                //std::cout << "      Source Flip: " << node->dropFlip().first << "Target Flip: " << node->dropFlip().second << std::endl;
+                            } catch(const char* msg) {
+                                std::cout << msg << std::endl;
+                                continue;
+                            }
+                        }
+                        if(j < roots.size()) {
+                            if(minDiff > node->targetLength / 10) {
+                                std::cout << "    The minimum diff: " << minDiff << " is not near enough" << std::endl;
+                            } else {
+                                freeValsList[i].push_back(activeVals);
+                                rootList[i].push_back(roots[j]);
+                            }
+                        }
+                    } else {
+                        freeValsList[i].push_back(activeVals);
+                        rootList[i].push_back(roots.front());
+                    }
                 }
+            } catch(const char* msg) {
+                std::cout << msg << std::endl;
+            } catch(...) {
+                std::cout << "Error in SPLINTER occurs." << std::endl;
             }
         }
     }
