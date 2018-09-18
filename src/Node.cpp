@@ -165,30 +165,30 @@ std::pair<double, double> Node::refineInterval(std::unordered_map<unsigned, doub
     TTGT &subG = reflex->graphRef;
     TTGT &rootG = subG.root();
     auto eIndexMap = get(edge_index_t(), rootG);
-    EdgeDesc<TTGT> et = reflex->targetEdge;
-    VerDesc<TTGT> vt = findTargetVertex(et, subG);
+    EdgeDesc<TTGT> et = subG.local_to_global(reflex->targetEdge);
+    VerDesc<TTGT> vt = findTargetVertex(et, rootG);
     VerDesc<TTGT> v1, v2;
-    std::tie(v1, v2) = getSupportiveVertexPair(vt, subG);
+    std::tie(v1, v2) = getSupportiveVertexPair(vt, rootG);
     EdgeDesc<TTGT> e0 = findCommonEdge(v1, v2, rootG);
     EdgeDesc<TTGT> e1;
-    if(et == subG[vt].pointReflex->e1) {
-        e1 = subG[vt].pointReflex->e2;
+    if(et == rootG[vt].pointReflex->e1) {
+        e1 = rootG[vt].pointReflex->e2;
     } else {
-        e1 = subG[vt].pointReflex->e1;
+        e1 = rootG[vt].pointReflex->e1;
     }
-    double d1, d2;
+    double d0, d1;
     if(rootG[e0].edge_type == EdgeType::ADDED) {
-        d1 = valMap[get(eIndexMap, e0)];
+        d0 = valMap[get(eIndexMap, e0)];
     } else {
-        d1 = rootG[e0].distance;
+        d0 = rootG[e0].distance;
     }
     if(rootG[e1].edge_type == EdgeType::ADDED) {
-        d2 = valMap[get(eIndexMap, e1)];
+        d1 = valMap[get(eIndexMap, e1)];
     } else {
-        d2 = rootG[e1].distance;
+        d1 = rootG[e1].distance;
     }
 
-    return std::make_pair(abs(d1 - d2), d1 + d2);
+    return std::make_pair(abs(d0 - d1) + Link::getEps(), d0 + d1 - Link::getEps());
 }
 
 
@@ -198,7 +198,15 @@ void Node::generateDRplan()
     TTGT &subG = reflex->graphRef;
     isCayleyNode = num_edges(subG) == 1;
     if(isCayleyNode) {
-        calcInterval();
+        //calcInterval();
+        TTGT &rootG = subG.root();
+        auto eIndexMap = get(edge_index_t(), rootG);
+        EdgeDesc<TTGT> ei = subG.local_to_global(*(edges(subG).first));
+        interval.first = rootG[ei].interval.first + Link::getEps();
+        interval.second = rootG[ei].interval.second - Link::getEps();
+        targetCayley = get(eIndexMap, ei);
+        freeCayley.push_back(targetCayley);
+        allCayley = freeCayley;
         return;
     }
 

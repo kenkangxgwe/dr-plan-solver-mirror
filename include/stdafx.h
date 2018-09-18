@@ -27,5 +27,6 @@
 #include <boost/program_options.hpp>
 #include "Splinter/bspline.h"
 #include "Splinter/bsplinebuilder.h"
+#include <glpk.h>
 
 // TODO: reference additional headers your program requires here

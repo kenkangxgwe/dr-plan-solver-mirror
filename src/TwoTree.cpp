@@ -17,6 +17,7 @@
 
 #include "stdafx.h"
 #include "TwoTree.h"
+#include "TwoTreeUtils.h"
 
 using namespace boost;
 
@@ -136,6 +137,7 @@ void TwoTree::generateDRplan()
 {
     graph[GraphBundle].reflex = new Reflex(graph);
     graph[GraphBundle].tt = this;
+    calcEdgeBoundaries(graph);
     graph[GraphBundle].generateDRplan();
 }
 

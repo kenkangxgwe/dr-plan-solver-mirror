@@ -21,7 +21,9 @@
 
 namespace DRPLAN
 {
-VerDesc<TTGT> findTargetVertex(EdgeDesc<TTGT> const &tarEdge, TTGT const &graph);
-std::pair<VerDesc<TTGT>, VerDesc<TTGT>> getSupportiveVertexPair(VerDesc<TTGT> const &vc, TTGT const &graph);
-EdgeDesc<TTGT> findCommonEdge(VerDesc<TTGT> const &v1, VerDesc<TTGT> const &v2, TTGT &graph);
+    VerDesc<TTGT> findTargetVertex(EdgeDesc<TTGT> const &tarEdge, TTGT const &graph);
+    std::pair<VerDesc<TTGT>, VerDesc<TTGT>> getSupportiveVertexPair(VerDesc<TTGT> const &vc, TTGT const &graph);
+    EdgeDesc<TTGT> findCommonEdge(VerDesc<TTGT> const &v1, VerDesc<TTGT> const &v2, TTGT &graph);
+    std::vector<std::pair<EdgeDesc<TTGT>, EdgeDesc<TTGT>>> findCommonTargetEdges(VerDesc<TTGT> const &v1, VerDesc<TTGT> const &v2, TTGT const &graph);
+    void calcEdgeBoundaries(TTGT &graph);
 }
