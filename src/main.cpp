@@ -54,11 +54,12 @@ int main(int argc, char *argv[])
      */
     po::options_description desc("Allowed options");
     desc.add_options()
-            ("input-file", po::value<std::string>(), "input file (.dot)")
-            ("flip,f", po::value<std::string>(), "vertex to be flipped (default: none)")
-            ("sample,s", po::value<int>(), "sample number (default: 20)")
-            ("use-length,l", po::value<bool>(), "whether use edge length from the input (default: true).")
-            ("help,h", "produce help message");
+        ("input-file", po::value<std::string>(), "input file (.dot)")
+        ("flip,f", po::value<std::string>(), "vertex to be flipped (default: none)")
+        ("sample,s", po::value<int>(), "sample number (default: 20)")
+        ("use-length,l", po::value<bool>(), "whether use edge length from the input (default: true).")
+        ("offset,o", po::value<int>(), "max offset (default: 0)")
+        ("help,h", "produce help message");
     po::positional_options_description p;
     p.add("input-file", -1);
     po::variables_map vm;
@@ -110,7 +111,23 @@ int main(int argc, char *argv[])
     } else {
         std::cout << "Use default value: 20." << std::endl;
     }
-    Tree drplan(&tt.getRoot(), sampleNum);
+
+    /**
+     * Parse and apply the max offset.
+     */
+    unsigned maxOffset = 0;
+    if(vm.count("offset")) {
+        maxOffset = (unsigned) vm["offset"].as<int>();
+        if(maxOffset) {
+            std::cout << "Using custom max offset:" << maxOffset << "." << std::endl;
+        } else {
+            maxOffset = 0;
+            std::cout << "Invalid max offset. Use default value: 0." << std::endl;
+        }
+    } else {
+        std::cout << "Use default value: 0." << std::endl;
+    }
+    Tree drplan(&tt.getRoot(), sampleNum, maxOffset);
 //    std::vector<int> flipIdx({3, 5, 6}); // HexTrig
 //    std::vector<int> flipIdx({3, 5, 6, 9, 12}); // zig-zag-3
 //    std::vector<unsigned> flipIdx({3, 5, 6, 9, 12, 13, 15, 16, 18}); // zig-zag-4

@@ -20,6 +20,9 @@
 #include "stdafx.h"
 #include "BlackBox.hpp"
 
+namespace DRPLAN
+{
+
 template<typename GraphType>
 using VerIter = typename boost::graph_traits<GraphType>::vertex_iterator;
 template<typename GraphType>
@@ -32,9 +35,6 @@ template<typename GraphType>
 using VerDesc = typename boost::graph_traits<GraphType>::vertex_descriptor;
 template<typename GraphType>
 using EdgeDesc = typename boost::graph_traits<GraphType>::edge_descriptor;
-
-namespace DRPLAN
-{
 
 struct PointReflex;
 
@@ -169,13 +169,14 @@ struct Node
     void generateDRplan(); ///< Generates the DR-Plan beneath current DR-Node.
     void printDRplan() const; ///< Prints the generated DR-Plan.
     void exportGraphviz(std::string = "") const; ///< Exports GraphViz dot file.
-    void realize(std::unordered_map<unsigned, double>);  ///< Realizes the DR-Plan.
+    Node* realize(std::unordered_map<unsigned, double>);  ///< Realizes the DR-Plan.
     void calcInterval(); ///< Calculates the interval of Cayley node.
     std::pair<double, double> refineInterval(std::unordered_map<unsigned, double>); ///< Refines the interval of Cayley parameter according to triangle inequality.
     double dropDiff(); ///< Calculates the difference in length between actual and expect target dropped edge.
     std::pair<double, double> dropFlip(); ///< Determines the dropped edge's flip.
     void findFlip(); ///< Find the vertices that determine the dropped edge's flip.
-    std::string toString() const; ///< Describes current DR-Node.
+    std::string toString() const; ///< Describes current DR-Node by its target Cayley.
+    std::string toStringFull() const; ///< Describes current DR-Node by its expression.
 
     Reflex *reflex; ///< A pointer avoiding cross-reference
     const TwoTree *tt; ///< A Pointer to the root two-tree

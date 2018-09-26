@@ -24,18 +24,29 @@
 namespace DRPLAN
 {
 
+typedef std::unordered_map<unsigned, double> DoubleMap;
+typedef std::unordered_map<unsigned, BlackBox<>> Solution;
+typedef std::unordered_map<unsigned, std::pair<double, double>> Domain;
+typedef BlackBox<unsigned, double, DoubleMap> MapTransform;
+
+struct NodeSolution
+{
+    Solution solution; /**< A list of maps that stores all current possible solutions.
+																	Each solution map contains the representation for each variable
+																	which only involves the free variables .
+																	*/
+    Domain domain; ///< A map that stores the interval of the interpolation samples.
+    std::vector<int> drop_filp;
+    unsigned offset;
+};
+
 class Tree
 {
-
-    typedef std::unordered_map<unsigned, double> DoubleMap;
-    typedef std::unordered_map<unsigned, BlackBox<>> Solution;
-    typedef std::unordered_map<unsigned, std::pair<double, double>> Domain;
-    typedef BlackBox<unsigned, double, DoubleMap> MapTransform;
 
 public:
     Tree();
 
-    Tree(DRPLAN::Node *root, unsigned sampleNum);
+    Tree(DRPLAN::Node *root, unsigned sampleNum = 20, unsigned maxOffset = 0);
 
     ~Tree();
 
@@ -47,13 +58,10 @@ public:
 private:
     DRPLAN::Node *root;
     unsigned sampleNum; ///< The number of samples for interpolation.
-    std::vector<Domain> domainList; ///< A map that stores the interval of the interpolation samples.
-    std::vector<Solution> solutionList; /**< A list of maps that stores all current possible solutions.
-																	Each solution map contains the representation for each variable
-																	which only involves the free variables .
-																	*/
+    unsigned max_offset; ///< The number of maximum times using tolenrance during the sampling.
+    std::vector<NodeSolution> nodeSolutionList;
     bool solveNode(DRPLAN::Node *curNode);
-    MapTransform transformMap(DRPLAN::Node *node, const Tree::Solution &solution) const;
+    MapTransform transformMap(DRPLAN::Node *node, const Solution &solution) const;
     /**
      * Interpolates the sample points to solve the roots
      * and represent the target variable in terms of free variables.
@@ -62,17 +70,12 @@ private:
      * @param node a pointer to currently solving root.
      * @return A list of representations of the target variable.
      */
-    std::pair<std::vector<BlackBox<>>, std::vector<Domain>>
-    solveTarget(Node *node, const MapTransform &varMap, const Domain domain) const;
-    /**
-     * Uses the free variables to replace the target variable wherever it occurs in the previous solution.
-     * @param solution the solution map where the representation was solved.
-     * @param reps the representation of the target variable in terms of the free variables.
-     * @param targetVar the index of the target variable.
-     * @return the new solution with no target variable appears.
-     */
+    std::vector<NodeSolution>
+    solveTarget(Node *node, MapTransform const &varMap, NodeSolution const &domain) const;
     Solution updateSolution(const Solution &solution, const BlackBox<> &reps, unsigned targetVar) const;
-    Domain updateDomain(const Domain &domain, const Domain &interDomain) const;
+
+    friend std::vector<std::vector<std::pair<DoubleMap, double>>>
+    findRoots(Node *, SPLINTER::DataTable const &, MapTransform const &, DoubleMap &, std::vector<double> const &);
 
 };
 

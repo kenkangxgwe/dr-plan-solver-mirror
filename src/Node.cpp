@@ -27,7 +27,7 @@ using namespace boost;
 namespace DRPLAN
 {
 
-void Node::realize(std::unordered_map<unsigned, double> valMap)
+Node* Node::realize(std::unordered_map<unsigned, double> valMap)
 {
     TTGT &subG = reflex->graphRef;
     TTGT const &rootG = subG.root();
@@ -84,6 +84,7 @@ void Node::realize(std::unordered_map<unsigned, double> valMap)
         double y = (-dd * md * dy + sign * dx * sqrt(delta)) / d0 / d0 + my;
         subG[*vi].setXY(x, y);
     }
+    return this;
 }
 
 std::pair<double, double> Node::dropFlip()
@@ -328,6 +329,17 @@ void Node::findFlip()
 std::string Node::toString() const
 {
     return "tv" + std::to_string(targetCayley);
+}
+
+std::string Node::toStringFull() const
+{
+    std::string output = "x_" + std::to_string(targetCayley) + "(";
+    for(auto &&freeVar : freeCayley) {
+        output += "x_" + std::to_string(freeVar) + ",";
+    }
+    output.pop_back();
+    output += ")";
+    return output;
 }
 
 template<typename Graph>
