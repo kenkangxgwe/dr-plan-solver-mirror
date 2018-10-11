@@ -131,9 +131,21 @@ MapTransform Tree::transformMap(DRPLAN::Node *node, const Solution &solution) co
     }, activeSet);
 }
 
+/**
+ * Find the roots for the specified datatable.
+ * Since there are fake roots given by SPLINTER, we need to find those are near enough to the dropped edge length.
+ * @param node the DR-node currently working on
+ * @param dataTable the dataTable that contains the sample points
+ * @param varMap the variable representation map
+ * @param activeVals the value of the active variables
+ * @param near_num the maximal number of roots
+ * @param tolList a list of tolerances which will try in case for multi-roots.
+ * @return a 2d array one row for one tolerance and each row may have zero to near_num roots,
+ * where each root is a pair of cayley values and root.
+ */
 std::vector<std::vector<std::pair<DoubleMap, double>>>
 findRoots(Node *node, SPLINTER::DataTable const &dataTable, MapTransform const &varMap,
-          DoubleMap &activeVals, std::vector<double> const &tolList = {0.0})
+          DoubleMap &activeVals, size_t const near_num = 1, std::vector<double> const &tolList = {0.0})
 {
     std::vector<std::vector<std::pair<DoubleMap, double>>> result{
         tolList.size(),
@@ -147,8 +159,8 @@ findRoots(Node *node, SPLINTER::DataTable const &dataTable, MapTransform const &
 
     try {
         SPLINTER::BSpline slicedInter = SPLINTER::BSpline::Builder(dataTable).degree(3).build();
-        for(int i = 0; i < tolList.size(); i++) {
-            std::vector<double> roots = RootFinder::findZeros(slicedInter, 3, node->targetLength * tolList[i]);
+        for(int tol_i = 0; tol_i < tolList.size(); tol_i++) {
+            std::vector<double> roots = RootFinder::findZeros(slicedInter, 3, node->targetLength * tolList[tol_i]);
 
             if(roots.empty()) {
                 continue;
@@ -158,42 +170,53 @@ findRoots(Node *node, SPLINTER::DataTable const &dataTable, MapTransform const &
                 //freeVarSet.empty()
                 false
                 ) {
-                auto res = result[i];
+                auto res = result[tol_i];
                 for(const auto &root : roots) {
-                    result[i].push_back(std::make_pair(DoubleMap(), root));
+                    result[tol_i].push_back(std::make_pair(DoubleMap(), root));
                 }
             } else if(roots.size() >= 2) {
-                std::cout << "    Found " << roots.size() << " roots. Using the nearest one this time."
-                          << std::endl;
-                unsigned minIdx = 0;
-                double minDiff = DBL_MAX;
-                for(unsigned rootIdx = 0; rootIdx < roots.size(); rootIdx++) {
+                std::vector<std::pair<double, double>> near_roots;
+                near_roots.reserve(near_num + 1);
+                for(unsigned rt_i = 0; rt_i < roots.size(); rt_i++) {
                     try {
-                        activeVals[node->targetCayley] = roots[rootIdx];
+                        activeVals[node->targetCayley] = roots[rt_i];
                         double cur_diff = abs(node->realize(varMap(activeVals))->dropDiff());
-                        //node->exportGraphviz(std::to_string(rootIdx));
-                        if(minDiff >= cur_diff) {
-                            minDiff = cur_diff;
-                            minIdx = rootIdx;
+                        //node->exportGraphviz(std::to_string(rt_i));
+                        if(cur_diff < node->targetLength * .2) {
+                            bool root_inserted = false;
+                            for(auto nr_i = near_roots.begin(); nr_i != near_roots.end(); ++nr_i) {
+                                if(cur_diff < (*nr_i).first) {
+                                    near_roots.insert(nr_i, std::make_pair(cur_diff, roots[rt_i]));
+                                    root_inserted = true;
+                                    break;
+                                }
+                            }
+                            if(!root_inserted) {
+                                near_roots.emplace_back(cur_diff, roots[rt_i]);
+                            }
+                            if(near_roots.size() > near_num) {
+                                near_roots.pop_back();
+                            }
                         }
-                        //std::cout << "      Source Flip: " << node->dropFlip().first << "Target Flip: " << node->dropFlip().second << std::endl;
                     } catch(const char *msg) {
                         std::cout << msg << std::endl;
                         continue;
                     }
                 }
 
-                if(minIdx < roots.size()) {
-                    if(minDiff > node->targetLength / 5) {
-                        std::cout << "    The minimum diff: " << minDiff << " is not near enough" << std::endl;
-                    } else {
-                        result[i].push_back(std::make_pair(activeVals, roots[minIdx]));
-                    }
+                if(near_roots.empty()) {
+                    std::cout << "    The minimum diff is not near enough" << std::endl;
                 } else {
-                    continue;
+                    if(near_roots.size() > 1) {
+                        std::cout << "    There are " << near_roots.size() << " roots less in 5% of the target length" << std::endl;
+                    }
+                    result[tol_i].reserve(near_roots.size());
+                    for(auto const &[_, rt] : near_roots) {
+                        result[tol_i].emplace_back(activeVals, rt);
+                    }
                 }
             } else {
-                result[i].push_back(std::make_pair(activeVals, roots.front()));
+                result[tol_i].push_back(std::make_pair(activeVals, roots.front()));
             }
 
         }
@@ -277,6 +300,7 @@ Tree::solveTarget(Node *node, const MapTransform &varMap, NodeSolution const &no
      * interpolate the sample values of target variable against the values of the blackbox,
      * and find the root of the target variable.
      */
+    size_t const near_num = 3;
     std::vector<double> tol_list;
     if(nodeSolution.offset >= max_offset) {
         tol_list = {0.00};
@@ -400,7 +424,7 @@ Tree::solveTarget(Node *node, const MapTransform &varMap, NodeSolution const &no
          * and construct 4 * tolList.size() rootsLists
          */
         for(int df_i = 0; df_i < 4; df_i++) {
-            auto rootpairs = findRoots(node, dataTable[df_i], varMap, activeVals, tol_list);
+            auto rootpairs = findRoots(node, dataTable[df_i], varMap, activeVals, near_num, tol_list);
             for(int tol_i = 0; tol_i < tol_list.size(); tol_i++) {
                 if(!rootpairs[tol_i].empty()) {
                     freeValsList[df_i * tol_list.size() + tol_i].push_back(rootpairs[tol_i].front().first);
@@ -441,10 +465,8 @@ Tree::solveTarget(Node *node, const MapTransform &varMap, NodeSolution const &no
             Domain newDomain;
             // calculate new domain
             for(auto &freeVarIndex : freeVarSet) {
-                double lb, ub;
-                lb = freeValsList[rt_i][0][freeVarIndex];
-                ub = lb;
-                for(unsigned rt_j = 1; rt_j < freeValsList[rt_i].size(); rt_j++) {
+                double lb = DBL_MAX, ub = DBL_MIN;
+                for(unsigned rt_j = 0; rt_j < freeValsList[rt_i].size(); rt_j++) {
                     if(lb > freeValsList[rt_i][rt_j][freeVarIndex]) {
                         lb = freeValsList[rt_i][rt_j][freeVarIndex];
                     } else if(ub < freeValsList[rt_i][rt_j][freeVarIndex]) {
