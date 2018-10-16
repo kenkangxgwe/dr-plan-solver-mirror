@@ -17,9 +17,10 @@
 
 #include "Tree.h"
 
-#include "RootFinder.h"
 #include "Enumeration.hpp"
-#include "TwoTree.h"
+#include "RootFinder.h"
+
+#include "Splinter/bsplinebuilder.h"
 
 namespace DRPLAN
 {

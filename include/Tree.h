@@ -17,9 +17,10 @@
 
 #pragma once
 
-#include "stdafx.h"
-#include "BlackBox.hpp"
 #include "TwoTree.h"
+#include "BlackBox.hpp"
+#include <Splinter/datatable.h>
+#include "stdafx.h"
 
 namespace DRPLAN
 {

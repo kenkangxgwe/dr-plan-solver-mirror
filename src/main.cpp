@@ -16,8 +16,10 @@
  */
 
 #include "stdafx.h"
-#include "Tree.h"
 #include "TwoTree.h"
+#include "Tree.h"
+
+#include <boost/program_options.hpp>
 
 /**
  *  A data structure to represent the ordering of (constraint, parameter)

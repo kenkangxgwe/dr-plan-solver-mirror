@@ -16,8 +16,8 @@
  */
 
 #pragma once
-#include "stdafx.h"
 #include "TwoTree.h"
+#include "stdafx.h"
 
 namespace DRPLAN
 {

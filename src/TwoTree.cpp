@@ -15,9 +15,11 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "stdafx.h"
 #include "TwoTree.h"
 #include "TwoTreeUtils.h"
+
+#include <glpk.h>
+#include "stdafx.h"
 
 using namespace boost;
 
