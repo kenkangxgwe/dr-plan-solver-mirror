@@ -45,9 +45,7 @@ class Tree
 {
 
 public:
-    Tree();
-
-    Tree(DRPLAN::Node *root, unsigned sampleNum = 20, unsigned maxOffset = 0);
+    Tree(TwoTree &, unsigned sampleNum = 20, unsigned maxOffset = 0);
 
     ~Tree();
 
@@ -57,12 +55,13 @@ public:
 																	 Each solution maps a variable index to its corresponding value.*/
 
 private:
-    DRPLAN::Node *root;
+    TwoTree &tt;
     unsigned sampleNum; ///< The number of samples for interpolation.
     unsigned max_offset; ///< The number of maximum times using tolenrance during the sampling.
     std::vector<NodeSolution> nodeSolutionList;
-    bool solveNode(DRPLAN::Node *curNode);
-    MapTransform transformMap(DRPLAN::Node *node, const Solution &solution) const;
+
+    bool solveNode(TwoTree::graph_t &);
+    MapTransform transformMap(TwoTree::graph_t const &, const Solution &solution) const;
     /**
      * Interpolates the sample points to solve the roots
      * and represent the target variable in terms of free variables.
@@ -72,11 +71,11 @@ private:
      * @return A list of representations of the target variable.
      */
     std::vector<NodeSolution>
-    solveTarget(Node *node, MapTransform const &varMap, NodeSolution const &domain) const;
-    Solution updateSolution(const Solution &solution, const BlackBox<> &reps, unsigned targetVar) const;
+    solveTarget(TwoTree::graph_t &, MapTransform const &varMap, NodeSolution const &domain) const;
 
-    friend std::vector<std::vector<std::pair<DoubleMap, double>>>
-    findRoots(Node *, SPLINTER::DataTable const &, MapTransform const &, DoubleMap &, std::vector<double> const &);
+    std::vector<std::vector<std::pair<DoubleMap, double>>>
+    findRoots(TwoTree::graph_t &, SPLINTER::DataTable const &, MapTransform const &,
+              DoubleMap &activeVals, size_t near_num = 1, std::vector<double> const &tolList = {0.0}) const;
 
 };
 

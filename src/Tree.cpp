@@ -19,26 +19,26 @@
 
 #include "Enumeration.hpp"
 #include "RootFinder.h"
+#include "TwoTreeUtils.h"
 
 #include "Splinter/bsplinebuilder.h"
 
 namespace DRPLAN
 {
 
-Tree::Tree() {}
-
-Tree::Tree(DRPLAN::Node *root, unsigned sampleNum, unsigned maxOffset)
-    : root(root), sampleNum(sampleNum), max_offset(maxOffset)
+Tree::Tree(TwoTree &tt, unsigned sampleNum, unsigned maxOffset)
+    : tt(tt), sampleNum(sampleNum), max_offset(maxOffset)
 {
+    testSubgraph(this->tt.m_graph, this->tt);
 }
 
-Tree::~Tree() {}
+Tree::~Tree() = default;
 
 bool Tree::solveTree()
 {
     nodeSolutionList.clear();
     finalSolutionList.clear();
-    if(!solveNode(root)) {
+    if(!solveNode(tt.m_graph)) {
         return false;
     }
     for(const auto &nodeSolution : nodeSolutionList) {
@@ -51,13 +51,14 @@ bool Tree::solveTree()
     return true;
 }
 
-bool Tree::solveNode(DRPLAN::Node *curNode)
+bool Tree::solveNode(TwoTree::graph_t &cur_graph)
 {
     /**
      * If current node is a variable node,
      * we simply add current pair of variable and its constant function into every solution map.
      */
-    if(curNode->isCayleyNode) {
+    auto const &curNode = tt[cur_graph];
+    if(curNode.isCayleyNode) {
         /**
          * There is no solution map.
          */
@@ -67,11 +68,11 @@ bool Tree::solveNode(DRPLAN::Node *curNode)
         /**
          * The variable is not present in existing solution map.
          */
-        if(nodeSolutionList[0].solution.count(curNode->targetCayley) == 0) {
-            assert(nodeSolutionList[0].domain.count(curNode->targetCayley) == 0);
+        if(nodeSolutionList[0].solution.count(curNode.targetCayley) == 0) {
+            assert(nodeSolutionList[0].domain.count(curNode.targetCayley) == 0);
             for(auto &nodeSolution : nodeSolutionList) {
-                nodeSolution.solution[curNode->targetCayley] = std::move(BlackBox<>::projectFunc(curNode->targetCayley));
-                nodeSolution.domain[curNode->targetCayley] = curNode->interval;
+                nodeSolution.solution[curNode.targetCayley] = std::move(BlackBox<>::projectFunc(curNode.targetCayley));
+                nodeSolution.domain[curNode.targetCayley] = curNode.interval;
             }
         }
         return true;
@@ -79,22 +80,22 @@ bool Tree::solveNode(DRPLAN::Node *curNode)
     /**
      * Solve every sub node.
      */
-    for(auto &subNode : curNode->subNodes) {
-        if(!solveNode(subNode)) {
+    for(auto [gi, gi_end] = cur_graph.children(); gi != gi_end; ++gi) {
+        if(!solveNode(*gi)) {
             return false;
         }
     }
     /**
      * Solve the current node based on every possible solution.
      */
-    std::cout << "Solving " << curNode->toStringFull() << ":" << std::endl;
+    std::cout << "Solving " << tt.toStringFull(cur_graph) << ":" << std::endl;
     std::vector<NodeSolution> newNodeSolutionList;
     for(auto const &nodeSolution: nodeSolutionList) {
         //for(unsigned i = 0; i < nodeSolutionList.size(); i++) {
         //    const auto &solution = solutionList[i];
         //    const auto &domain = domainList[i];
-        MapTransform transformedMap = transformMap(curNode, nodeSolution.solution);
-        auto curNodeSolutionList = std::move(solveTarget(curNode, transformedMap, nodeSolution));
+        MapTransform transformedMap = transformMap(cur_graph, nodeSolution.solution);
+        auto curNodeSolutionList = std::move(solveTarget(cur_graph, transformedMap, nodeSolution));
         std::cout << "  Found " << curNodeSolutionList.size() << " representation(s)." << std::endl;
         newNodeSolutionList.insert(newNodeSolutionList.end(), curNodeSolutionList.begin(), curNodeSolutionList.end());
     }
@@ -104,17 +105,18 @@ bool Tree::solveNode(DRPLAN::Node *curNode)
 
     nodeSolutionList = newNodeSolutionList;
     std::cout << "Found " << newNodeSolutionList.size() << " solution(s) for "
-              << curNode->toStringFull() << "." << std::endl;
+              << tt.toStringFull(cur_graph) << "." << std::endl;
+
     return true;
 }
 
-MapTransform Tree::transformMap(DRPLAN::Node *node, const Solution &solution) const
+MapTransform Tree::transformMap(TwoTree::graph_t const &graph, Solution const &solution) const
 {
-    std::unordered_set<unsigned> activeSet(node->targetCayley); ///< The set that stores the indices of all active variables (free variables and target variable).
-    activeSet.insert(node->freeCayley.begin(), node->freeCayley.end());
+    std::unordered_set<unsigned> activeSet(tt[graph].targetCayley); ///< The set that stores the indices of all active variables (free variables and target variable).
+    activeSet.insert(tt[graph].freeCayley.begin(), tt[graph].freeCayley.end());
 
     std::unordered_set<unsigned> solvedVars; ///< The set that stores the indices of all previously solved variables.
-    for(auto &var : node->allCayley) {
+    for(auto &var : tt[graph].allCayley) {
         if(!activeSet.count(var)) {
             solvedVars.emplace(var);
         }
@@ -145,8 +147,8 @@ MapTransform Tree::transformMap(DRPLAN::Node *node, const Solution &solution) co
  * where each root is a pair of cayley values and root.
  */
 std::vector<std::vector<std::pair<DoubleMap, double>>>
-findRoots(Node *node, SPLINTER::DataTable const &dataTable, MapTransform const &varMap,
-          DoubleMap &activeVals, size_t const near_num = 1, std::vector<double> const &tolList = {0.0})
+Tree::findRoots(TwoTree::graph_t &graph, SPLINTER::DataTable const &dataTable, MapTransform const &varMap,
+          DoubleMap &activeVals, size_t const near_num, std::vector<double> const &tolList) const
 {
     std::vector<std::vector<std::pair<DoubleMap, double>>> result{
         tolList.size(),
@@ -161,7 +163,7 @@ findRoots(Node *node, SPLINTER::DataTable const &dataTable, MapTransform const &
     try {
         SPLINTER::BSpline slicedInter = SPLINTER::BSpline::Builder(dataTable).degree(3).build();
         for(int tol_i = 0; tol_i < tolList.size(); tol_i++) {
-            std::vector<double> roots = RootFinder::findZeros(slicedInter, 3, node->targetLength * tolList[tol_i]);
+            std::vector<double> roots = RootFinder::findZeros(slicedInter, 3, tt[graph].targetLength * tolList[tol_i]);
 
             if(roots.empty()) {
                 continue;
@@ -180,10 +182,10 @@ findRoots(Node *node, SPLINTER::DataTable const &dataTable, MapTransform const &
                 near_roots.reserve(near_num + 1);
                 for(unsigned rt_i = 0; rt_i < roots.size(); rt_i++) {
                     try {
-                        activeVals[node->targetCayley] = roots[rt_i];
-                        double cur_diff = abs(node->realize(varMap(activeVals))->dropDiff());
+                        activeVals[tt[graph].targetCayley] = roots[rt_i];
+                        double cur_diff = abs(tt.realize(graph, varMap(activeVals)).dropDiff(graph));
                         //node->exportGraphviz(std::to_string(rt_i));
-                        if(cur_diff < node->targetLength * .2) {
+                        if(cur_diff < tt[graph].targetLength * .2) {
                             bool root_inserted = false;
                             for(auto nr_i = near_roots.begin(); nr_i != near_roots.end(); ++nr_i) {
                                 if(cur_diff < (*nr_i).first) {
@@ -272,11 +274,11 @@ NodeSolution *updateNodeSolution(NodeSolution &newNodeSolution, NodeSolution con
 }
 
 std::vector<NodeSolution>
-Tree::solveTarget(Node *node, const MapTransform &varMap, NodeSolution const &nodeSolution) const
+Tree::solveTarget(TwoTree::graph_t &graph, const MapTransform &varMap, NodeSolution const &nodeSolution) const
 {
     auto const &[solution, domain, drop_flip, offset] = nodeSolution;
     std::unordered_set<unsigned> freeVarSet = varMap.getVarSet();
-    unsigned const targetCayley = node->targetCayley;
+    unsigned const targetCayley = tt[graph].targetCayley;
     freeVarSet.erase(targetCayley);
     // The degree of freedom (flex number) should be no more than 5.
     assert(freeVarSet.size() <= 5);
@@ -301,7 +303,7 @@ Tree::solveTarget(Node *node, const MapTransform &varMap, NodeSolution const &no
      * interpolate the sample values of target variable against the values of the blackbox,
      * and find the root of the target variable.
      */
-    size_t const near_num = 3;
+    size_t const near_num = 1;
     std::vector<double> tol_list;
     if(nodeSolution.offset >= max_offset) {
         tol_list = {0.00};
@@ -327,7 +329,7 @@ Tree::solveTarget(Node *node, const MapTransform &varMap, NodeSolution const &no
         int suffix = 1; // suffix of export graph filename.
         suffix0++;
         double lb, ub;
-        std::tie(lb, ub) = node->refineInterval(varMap(activeVals));
+        std::tie(lb, ub) = tt.refineInterval(targetCayley, varMap(activeVals));
         double target_begin = domain.at(targetCayley).first;
         double target_end = domain.at(targetCayley).second;
         if(target_begin < lb) {
@@ -348,19 +350,19 @@ Tree::solveTarget(Node *node, const MapTransform &varMap, NodeSolution const &no
             }
             activeVals[targetCayley] = cur_sample;
             try {
-                double cur_result = node->realize(varMap(activeVals))->dropDiff();
+                double cur_result = tt.realize(graph, varMap(activeVals)).dropDiff(graph);
                 if(std::isnan(cur_result)) {
                     continue;
                 }
                 double src_flip, tar_flip;
-                std::tie(src_flip, tar_flip) = node->dropFlip();
+                std::tie(src_flip, tar_flip) = tt.getDropFlip(graph);
                 if(
                     //freeVarSet.empty()
                     //freeVarSet.size() == 2
                     //true
                     false
                     ) {
-                    node->exportGraphviz("f" + std::to_string(suffix0) + "c" + std::to_string(suffix++));
+                    tt.exportGraphviz(graph, "f" + std::to_string(suffix0) + "c" + std::to_string(suffix++));
                 }
                 // no last sample
                 if(initial) {
@@ -374,8 +376,8 @@ Tree::solveTarget(Node *node, const MapTransform &varMap, NodeSolution const &no
                         initial = true;
                     }
                     // when the sample is near a zero point
-                    if((target_end - target_begin) > node->targetLength * 0.1
-                       && abs(cur_result) < node->targetLength * 0.1) {
+                    if((target_end - target_begin) > tt[graph].targetLength * 0.1
+                       && abs(cur_result) < tt[graph].targetLength * 0.1) {
                         // the value changes too small
                         if(abs(cur_result - last_result) < (value_stp - tol)) {
                             if(smaller_stp) {
@@ -425,7 +427,7 @@ Tree::solveTarget(Node *node, const MapTransform &varMap, NodeSolution const &no
          * and construct 4 * tolList.size() rootsLists
          */
         for(int df_i = 0; df_i < 4; df_i++) {
-            auto rootpairs = findRoots(node, dataTable[df_i], varMap, activeVals, near_num, tol_list);
+            auto rootpairs = findRoots(graph, dataTable[df_i], varMap, activeVals, near_num, tol_list);
             for(int tol_i = 0; tol_i < tol_list.size(); tol_i++) {
                 if(!rootpairs[tol_i].empty()) {
                     freeValsList[df_i * tol_list.size() + tol_i].push_back(rootpairs[tol_i].front().first);
