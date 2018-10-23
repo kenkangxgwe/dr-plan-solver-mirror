@@ -25,33 +25,10 @@ using namespace boost;
 namespace DRPLAN
 {
 
-TwoTree::VerDesc findTargetVertex(TwoTree::EdgeDesc const &tarEdge, TwoTree::graph_t &graph, TwoTree const &tt)
+TwoTree::VerDesc getOppositeVertex(TwoTree::VerDesc const &vc, TwoTree::EdgeDesc const&ed, TwoTree::graph_t const &graph)
 {
-    TwoTree::VerDesc &&v1 = source(tarEdge, graph);
-    TwoTree::VerDesc &&v2 = target(tarEdge, graph);
-
-    if(tt[graph[v1].e1] == graph.local_to_global(tarEdge)
-       || tt[graph[v1].e2] == graph.local_to_global(tarEdge)) {
-        return v1;
-    } else {
-        return v2;
-    }
-}
-
-std::pair<TwoTree::VerDesc, TwoTree::VerDesc>
-getSupportiveVertexPair(TwoTree::VerDesc const &vc, TwoTree::graph_t const &graph, TwoTree const &tt)
-{
-    TwoTree::EdgeDesc ed1 = graph.global_to_local(tt[graph[vc].e1]);
-    TwoTree::EdgeDesc ed2 = graph.global_to_local(tt[graph[vc].e2]);
-    TwoTree::VerDesc v1 = target(ed1, graph);
-    TwoTree::VerDesc v2 = target(ed2, graph);
-    if(v1 == vc) {
-        v1 = source(ed1, graph);
-    }
-    if(v2 == vc) {
-        v2 = source(ed2, graph);
-    }
-    return {v1, v2};
+    auto v1 = target(ed, graph);
+    return vc == v1 ? source(ed, graph) : v1;
 }
 
 /**

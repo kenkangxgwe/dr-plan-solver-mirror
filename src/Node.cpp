@@ -66,8 +66,8 @@ TwoTree& TwoTree::realize(graph_t &graph, std::unordered_map<unsigned, double> v
         index_t const e2 = graph[*vi].e2;
         EdgeDesc ed1 = edge_map[graph[*vi].e1];
         EdgeDesc ed2 = edge_map[graph[*vi].e2];
-        VerDesc v1, v2;
-        tie(v1, v2) = getSupportiveVertexPair(*vi, graph, *this);
+        VerDesc v1 = getOppositeVertex(*vi, graph.global_to_local(ed1), m_graph);
+        VerDesc v2 = getOppositeVertex(*vi, graph.global_to_local(ed2), m_graph);
         double d1, d2;
         if(m_graph[ed1].edge_type == EdgeType::ADDED) {
             d1 = valMap[e1];
@@ -143,26 +143,33 @@ double TwoTree::dropDiff(graph_t &graph)
 std::pair<double, double> TwoTree::refineInterval(index_t targetCayley, std::unordered_map<unsigned, double> valMap)
 {
     EdgeDesc et = edge_map[targetCayley];
-    VerDesc vt = findTargetVertex(et, m_graph, *this);
-    auto [v1, v2] = getSupportiveVertexPair(vt, m_graph, *this);
-    EdgeDesc e0 = findCommonEdge(v1, v2, m_graph);
-    EdgeDesc e1;
-    if(et == edge_map[m_graph[vt].e1]) {
-        e1 = edge_map[m_graph[vt].e2];
+    VerDesc v0;
+    VerDesc v1 = source(edge_map[targetCayley], m_graph);
+    VerDesc v2 = target(edge_map[targetCayley], m_graph);
+    if(m_graph[v1].e1 == targetCayley) {
+        v0 = getOppositeVertex(v1, edge_map[m_graph[v1].e2], m_graph);
+    } else if(m_graph[v1].e2 == targetCayley) {
+        v0 = getOppositeVertex(v1, edge_map[m_graph[v1].e1], m_graph);
+    } else if(m_graph[v2].e1 == targetCayley) {
+        v0 = getOppositeVertex(v2, edge_map[m_graph[v2].e2], m_graph);
+    } else if(m_graph[v2].e2 == targetCayley){
+        v0 = getOppositeVertex(v2, edge_map[m_graph[v2].e1], m_graph);
     } else {
-        e1 = edge_map[m_graph[vt].e1];
+        throw("cannot find opposite vertex for target cayley edge");
     }
+    EdgeDesc e1 = findCommonEdge(v0, source(edge_map[targetCayley], m_graph), m_graph);
+    EdgeDesc e2 = findCommonEdge(v0, target(edge_map[targetCayley], m_graph), m_graph);
     double d0, d1;
     auto eIndexMap = get(edge_index_t(), m_graph);
-    if(m_graph[e0].edge_type == EdgeType::ADDED) {
-        d0 = valMap[get(eIndexMap, e0)];
-    } else {
-        d0 = m_graph[e0].distance;
-    }
     if(m_graph[e1].edge_type == EdgeType::ADDED) {
-        d1 = valMap[get(eIndexMap, e1)];
+        d0 = valMap[get(eIndexMap, e1)];
     } else {
-        d1 = m_graph[e1].distance;
+        d0 = m_graph[e1].distance;
+    }
+    if(m_graph[e2].edge_type == EdgeType::ADDED) {
+        d1 = valMap[get(eIndexMap, e2)];
+    } else {
+        d1 = m_graph[e2].distance;
     }
 
     return std::make_pair(abs(d0 - d1) + Link::getEps(), d0 + d1 - Link::getEps());
@@ -253,10 +260,10 @@ void TwoTree::generateDRplan(graph_t &graph)
 void TwoTree::findFlip(graph_t &graph)
 {
     auto &node = get_node(graph);
-    auto d1 = source(edge_map[node.targetDrop], graph);
-    auto d2 = target(edge_map[node.targetDrop], graph);
-    auto t1 = source(edge_map[node.targetCayley], graph);
-    auto t2 = target(edge_map[node.targetCayley], graph);
+    auto d1 = source(edge_map[node.targetDrop], m_graph);
+    auto d2 = target(edge_map[node.targetDrop], m_graph);
+    auto t1 = source(edge_map[node.targetCayley], m_graph);
+    auto t2 = target(edge_map[node.targetCayley], m_graph);
     if(t1 == d1 || t1 == d2) {
         auto tf = t2;
         t2 = t1;
@@ -266,16 +273,16 @@ void TwoTree::findFlip(graph_t &graph)
     }
     OutEdgeIter eo, eo_end;
     std::unordered_map<VerDesc, EdgeDesc> veMap;
-    std::tie(eo, eo_end) = out_edges(t1, graph);
+    std::tie(eo, eo_end) = out_edges(t1, m_graph);
     for(; eo != eo_end; ++eo) {
-        auto vt = target(*eo, graph);
+        auto vt = target(*eo, m_graph);
         if(vt < t2) {
             veMap[vt] = *eo;
         }
     }
     AdjVerIter va, va_end;
-    auto eIndexMap = get(edge_index_t(), graph);
-    std::tie(va, va_end) = adjacent_vertices(t2, graph);
+    auto eIndexMap = get(edge_index_t(), m_graph);
+    std::tie(va, va_end) = adjacent_vertices(t2, m_graph);
     for(; va != va_end; ++va) {
         if(veMap.count(*va)) {
             node.dropFlipEdge = get(eIndexMap, veMap.at(*va));

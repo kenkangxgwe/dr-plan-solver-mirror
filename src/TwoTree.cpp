@@ -208,7 +208,7 @@ void TwoTree::getSupportEdges()
                     m_graph[*vi].e1 = get(eIndexMap, *oe);
                     firstEdge = false;
                 } else { ///< second edge
-                    if(target(*oe, m_graph) < target(edge_map[m_graph[*vi].e1], m_graph)) {
+                    if(target(*oe, m_graph) < getOppositeVertex(*vi, edge_map[m_graph[*vi].e1], m_graph)) {
                         m_graph[*vi].e2 = m_graph[*vi].e1;
                         m_graph[*vi].e1 = get(eIndexMap, *oe);
                     } else {

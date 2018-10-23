@@ -22,9 +22,7 @@
 namespace DRPLAN
 {
     void testSubgraph(TwoTree::graph_t const &, TwoTree const &);
-    TwoTree::VerDesc findTargetVertex(TwoTree::EdgeDesc const &tarEdge, TwoTree::graph_t &graph, TwoTree const &tt);
-    std::pair<TwoTree::VerDesc, TwoTree::VerDesc>
-    getSupportiveVertexPair(TwoTree::VerDesc const &vc, TwoTree::graph_t const &, TwoTree const &);
+    TwoTree::VerDesc getOppositeVertex(TwoTree::VerDesc const &vc, TwoTree::EdgeDesc const&ed, TwoTree::graph_t const &graph);
     TwoTree::EdgeDesc findCommonEdge(TwoTree::VerDesc const &v1, TwoTree::VerDesc const &v2, TwoTree::graph_t &graph);
     std::vector<std::pair<TwoTree::EdgeDesc, TwoTree::EdgeDesc>>
     findCommonTargetEdges(TwoTree::VerDesc const &v1, TwoTree::VerDesc const &v2, TwoTree::graph_t const &graph);
