@@ -158,8 +158,8 @@ struct Node
 {
     bool isCayleyNode = false; ///< A predication whether the DR-Node is a Cayley node
     std::pair<double, double> interval; ///< The interval of sampling
-    std::vector<unsigned> freeCayley; ///< All free Cayley parameters in this this and sub nodes
-    std::vector<unsigned> allCayley; ///< All cayley parameters in this this and sub nodes
+    std::vector<index_t> freeCayley; ///< All free Cayley parameters in this this and sub nodes
+    std::vector<index_t> allCayley; ///< All cayley parameters in this this and sub nodes
     double targetLength = 100; ///< The length of the target dropped edge
     index_t targetDrop; ///< The index of dropped edge
     index_t targetCayley; ///< The index of target Cayley parameter
