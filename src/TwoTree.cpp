@@ -326,9 +326,7 @@ void TwoTree::calcEdgeBoundaries()
                     cons_j.push_back(edge_to_col[get(eIndexMap, e1)]);
                     cons_coef.push_back(1.0);
                 }
-            }
-
-            if(m_graph[e2].edge_type == EdgeType::ADDED) {
+            } else if(m_graph[e2].edge_type == EdgeType::ADDED) {
                 // add constrains for (x0 - x2 < d1)
                 int row = glp_add_rows(lp, 1);
                 glp_set_row_bnds(lp, row, GLP_LO, 0.0, m_graph[e2].distance);
