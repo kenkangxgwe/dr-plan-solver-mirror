@@ -10,6 +10,10 @@ ClearAll["DRPLAN`*"];
 ClearAll["DRPLAN`Private`*"];
 
 
+(* ::Item:: *)
+(*Output Symbols*)
+
+
 Displacement::usage = "Displacement[node_DRNode, node_DRNode] combines two realizations for the same linkage and draw displancement vectors.";
 RigidityMatrix::usage = "RigidityMatrix[graph_Graph] returns the rigidity matrix.";
 InfinitesimallyRigidQ::usage = "InfinitismallyRigidQ[graph_Graph] gives True if the input DRNode is infinitesimally rigid .";
@@ -24,6 +28,10 @@ Begin["`Private`"];
 
 (* ::Subsection:: *)
 (*Utilities*)
+
+
+(* ::Item:: *)
+(*Displacement*)
 
 
 Options[Displacement] = {"AddEdge" -> True};
@@ -53,15 +61,29 @@ Displacement[node1_DRNode, node2_DRNode, OptionsPattern[]] := Module[{graph1 = n
 ];
 
 
+(* ::Item:: *)
+(*RigidityMatrix*)
+
+
 RigidityMatrix[graph_Graph] := Module[{edgelist, coordMap},
     edgelist = EdgeList[graph];
     SparseArray[Join @@ (MapIndexed[RigidityElement[graph], edgelist])]
 ];
 
+
+(* ::Item:: *)
+(*RigidityElement*)
+
+
 RigidityElement[graph_][UndirectedEdge[v1_Integer, v2_Integer], {row_Integer}] := Module[{displacement},
     displacement = Subtract @@ PropertyValue[{graph, #}, VertexCoordinates]& /@ {v1, v2};
     {{row, 2 * v1 + 1} -> First@displacement, {row, 2 * v1 + 2} -> Last@displacement, {row, 2 * v2 + 1} -> First@(-displacement), {row, 2 * v2 + 2} -> Last@(-displacement)}
 ];
+
+
+(* ::Item:: *)
+(*InfinitesimallyRigidQ*)
+
 
 InfinitesimallyRigidQ[graph_Graph] := Module[{rigidityMatrix},
     rigidityMatrix = RigidityMatrix[graph];
@@ -83,6 +105,7 @@ DRPLAN["DRNodeVSFunc"][{xc_, yc_}, name_, {w_, h_}] := name["Graph"];
 DRPLAN["CCW"[p_List, q_List, r__List]] := Det[Append[#, 1] & /@ {p, q, r}];
 DRPLAN["SampleNum"] = 40;
 UnEcho = (#1&);
+PrintEcho = ((Print[#1];#1)&);
 
 
 (* ::Subsection:: *)
@@ -104,6 +127,10 @@ NewDRNode[graph:(_Graph | _Subgraph)] := Module[{objID = Unique[]},
 ];
 
 
+(* ::Subsection:: *)
+(*AddSubNode*)
+
+
 (* Add a new subnode, containing only the edges.
 Thus the graph property should be accessed through root graph. *)
 AddSubNode[node_DRNode, vertOrEdges:{(_Integer?NonNegative|_UndirectedEdge)..}] := Module[
@@ -116,12 +143,22 @@ AddSubNode[node_DRNode, vertOrEdges:{(_Integer?NonNegative|_UndirectedEdge)..}] 
     newSubNode
 ];
 
+
+(* ::Subsection:: *)
+(*Flip*)
+
+
 DRNode[objID_]["FlipAt"[vertices_List]] := Module[{obj = DRNode[objID], graph},
     graph = obj["Graph"];
     (PropertyValue[{graph, #}, "Flip"] = True)& /@ vertices;
     obj["Graph"] = graph;
     obj
 ];
+
+
+(* ::Subsection:: *)
+(*GenerateDRPlan*)
+
 
 DRNode[objID_]["GenerateDRPlan"[]] := Module[
 	{
@@ -160,6 +197,11 @@ DRNode[objID_]["GenerateDRPlan"[]] := Module[
     obj["EdgeRules"] = ((obj -> #&) /@ obj["SubNodes"]) ~Join~ (Join @@ Through[obj["SubNodes"]["EdgeRules"]]);
 ];
 
+
+(* ::Subsection:: *)
+(*GenerateDRNode*)
+
+
 (* Count down from the last edge to find a subnode. *)
 GenerateDRNode[node_DRNode] := GenerateDRNode[{node, EdgeCount[node["Graph"]], 0}, {{}, {}}];
 GenerateDRNode[{node_DRNode, edgeIndex_Integer?NonNegative, dropCounter_Integer?NonNegative}, {freeCayley:{_Integer?Positive...}, subNodes:{_DRNode...}}] := Module[
@@ -193,8 +235,12 @@ GenerateDRNode[{node_DRNode, edgeIndex_Integer?NonNegative, dropCounter_Integer?
 ];
 
 
-(* ::Subsubsection:: *)
+(* ::Subsection:: *)
 (*Linear Programming*)
+
+
+(* ::Subsubsection:: *)
+(*calcInterval*)
 
 
 (* Calculate the interval from every added edge using linear programming. *)
@@ -211,6 +257,7 @@ calcInterval[node_DRNode] := Module[
 		],
 		{e, EdgeList[graph]}
 	];
+
 	addNum = Length[addEdgeIndices];
 	edgeToCol = Association[Thread[(addEdgeIndices -> Range[addNum])]];
 	
@@ -240,6 +287,11 @@ calcInterval[node_DRNode] := Module[
 	node["Graph"] =  graph;
 	node
 ];
+
+
+(* ::Subsubsection:: *)
+(*getConstraints*)
+
 
 (* Construct triangular inequalities from one triangle, containing at least one added edge. *)
 getConstraints[graph_Graph, {e0_UndirectedEdge, e1_UndirectedEdge, e2_UndirectedEdge}, edgeToCol_Association, addNum_] :=
@@ -312,33 +364,45 @@ getConstraints[graph_Graph, {e0_UndirectedEdge, e1_UndirectedEdge, e2_Undirected
 (*Print*)
 
 
-DRNodeVRFunc[rk_, vk_] := 
+DRNodeVRFunc[type_][rk_, vk_DRNode] := 
 	Inset[Button[Column[{
-		HighlightNode[vk],
+		If[type == "Graph",
+			HighlightNode[vk],
+			Column @ (ToString/@{
+				vk,
+				{#, vk[#]}&["TargetCayley"],
+				{#, vk[#]}&["FreeCayley"],
+				{#, vk[#]}&["AllCayley"]
+			})
+		],
 		If[vk["IsCayleyNode"],
-			ToString[vk["Interval"]],
+			Column @ (ToString/@{
+				EdgeList[vk["Root"]["Graph"]][[vk["TargetCayley"]]],
+				vk["Interval"]
+			}),
 			Nothing
 		]}],
 	vk["ListSolution"[]], Appearance->None], rk];
 
-DRNode[objID_]["PlotDRPlan"[]] := TreePlot[DRNode[objID]["EdgeRules"],
-    Top, DRNode[objID], VertexRenderingFunction -> DRNodeVRFunc, EdgeRenderingFunction -> ({Dashed, Opacity[.5], Line[#1]}&)];
 
-PrintDRPlan[node_DRNode]:= Module[
-	{
-		graph = node["Graph"]
-	},
-	
-	Print[node["FreeCayley"]];
-    Print[node["SubNodes"]];
-    PrintDRPlan /@ node["SubNodes"];
-];
+DRNode[objID_]["PlotDRPlan"[]] := TreePlot[DRNode[objID]["EdgeRules"],
+    Top, DRNode[objID], VertexRenderingFunction -> DRNodeVRFunc["Graph"], EdgeRenderingFunction -> ({Dashed, Opacity[.5], Line[#1]}&)];
+
+Options[PrintDRPlan] = {
+	"NodeType" -> "Text"
+};
+
+
+PrintDRPlan[node_DRNode, OptionsPattern[]]:= TreePlot[node["EdgeRules"],
+    Top, node, VertexRenderingFunction -> DRNodeVRFunc[OptionValue["NodeType"]], EdgeRenderingFunction -> ({Dashed, Opacity[.5], Line[#1]}&)];
+
 
 EdgeColorMap = <|
 	"Add" -> Green,
 	"Partial" -> Black,
 	"Drop" -> Red
 |>;
+
 
 HighlightNode[node_DRNode] := Module[
 	{
@@ -354,7 +418,9 @@ HighlightNode[node_DRNode] := Module[
 	]
 ];
 
+
 Print[nodeSolution_NodeSolution] ^:= Print[ToString[nodeSolution]];
+
 
 ToString[nodeSolution_NodeSolution] ^:= "NodeSolution:\n" <> 
 "\tSolution:\n" <>
@@ -367,14 +433,44 @@ StringJoin[("\t\t" <> # <> "\n"&) @* ToString /@ (Normal @ Last @ nodeSolution)]
 (*Realization*)
 
 
+(* ::Subsubsection:: *)
+(*Realize*)
+
+
 DRNode[objID_]["Realize"[]] := Module[{obj = DRNode[objID], cayleyLength, coordsList, tmpSubGraph},
     cayleyLength = <| # -> PropertyValue[{obj["RootGraph"], #}, EdgeWeight]& /@ obj["AllCayley"] |>;
     obj["Realize"[cayleyLength]]
 ];
 DRNode[objID_]["Realize"[cayleyLength_Association]] := Module[{obj = DRNode[objID], coordsList, tmpSubGraph},
     coordsList = obj["CalcCoords"[VertexList[obj["Graph"]], cayleyLength]];
-    Subgraph[obj["Graph"], Keys[coordsList], VertexCoordinates -> Normal@coordsList, Options[obj["Graph"]]]
+    Subgraph[obj["Graph"], Keys[coordsList], VertexCoordinates -> Normal@coordsList, VertexLabels->"Name"]
 ];
+
+
+(* ::Subsubsection:: *)
+(*refineInterval*)
+
+
+refineInterval[node_DRNode, TargetCayley_, CayleyLength_Association] := Module[
+	{
+		graph = node["Graph"], rootgraph = node["Root"]["Graph"], targetedge,
+		v1, v2, commonvertex, d1, d2
+	},
+	targetedge = EdgeList[rootgraph][[TargetCayley]];
+	{v1, v2} = List @@ targetedge;
+	
+	commonvertex = Min[AdjacencyList[graph, v1] ~Intersection~ AdjacencyList[graph, v2]];
+	{d1, d2} = Function[{edge}, If[PropertyValue[{rootgraph, edge}, "EdgeType"] == "Add",
+		CayleyLength[EdgeIndex[rootgraph, edge]],
+		PropertyValue[{rootgraph, edge}, EdgeWeight]
+	]] /@ {UndirectedEdge[commonvertex, v1], UndirectedEdge[commonvertex, v2]};
+	Interval[{Abs[d1 - d2], d1 + d2}]
+];
+
+
+(* ::Subsubsection:: *)
+(*CalcCoords*)
+
 
 DRNode::nosol = "The graph is not realizable.";
 DRNode[objID_]["CalcCoords"[{v1_, v2_}, CayleyLength_Association]] := <|v1 -> {0, 0}, v2 -> {PropertyValue[{DRNode[objID]["Root"]["Graph"], v1<->v2}, EdgeWeight], 0}|>;
@@ -409,7 +505,7 @@ DRNode[objID_]["CalcCoords"[vertices_List, CayleyLength_Association]] := Module[
         delta = Chop[(d0^2 - dd^2) * (md^2 - d0^2 / 4)];
         If[ListQ[delta], Print["delta: ", preLengths, CayleyLength]];
         solutions = If[delta < 0,
-            UnEcho[delta, "delta"];
+            Echo[delta, "delta"];
             Return["Unrealizable"];
             {},
             sign = If[PropertyValue[{obj["Root"]["Graph"], curVertex}, "Flip"], 1, -1];
@@ -454,9 +550,10 @@ DRNode[objID_]["SolveNode"[]] := Module[
         UnEcho[#, "nodeSolutions", (ToString/@#&)]& @ {NodeSolution[<|obj["TargetCayley"] -> (First @* (Curry[Through[#1[#2]]&, 2][Lookup /@ obj["FreeCayley"]]))|>, <|obj["TargetCayley"] -> obj["Interval"]|>]}
     ,
         nodeSolutions = mergeSolution[Through[obj["SubNodes"]["SolveNode"[]]]];
-        UnEcho[#, "nodeSolutions", (ToString/@#&)]& @ Flatten @ (obj["Expand"[#]]& /@ nodeSolutions)
+        PrintEcho[#, "nodeSolutions", (ToString/@#&)]& @ Flatten @ (obj["Expand"[#]]& /@ nodeSolutions)
     ]
 ];
+
 
 mergeSolution[nodeSolutionLists:{{_NodeSolution...}...}] := Module[
 	{
@@ -469,11 +566,26 @@ mergeSolution[nodeSolutionLists:{{_NodeSolution...}...}] := Module[
 	] // Flatten // UnEcho
 ];
 
+
 DRNode[objID_]["ListSolution"[]] := Module[{obj = DRNode[objID], nodeSolutions, testFunc},
     If[!obj["IsCayleyNode"],
         nodeSolutions = mergeSolution[Through[obj["SubNodes"]["SolveNode"[]]]];
         Print[Panel[Column[{ToString[#], Construct[AnalyzeNode, obj, #]}, Center]]& /@ nodeSolutions];
     ];
+];
+
+
+modifyGraph[graph_]:=Module[
+	{},
+	(*VertexDelete[graph,5] // EdgeAdd[#,1\[UndirectedEdge]6]&*)
+	graph
+];
+
+
+NodeManipulateRenderingFunction[node_DRNode, CayleyLength_Association] := Module[
+	{graph},
+	graph = node["Realize"[CayleyLength]];
+	Column[{modifyGraph[graph], CayleyLength, dropDiff[node, graph]}]
 ];
 
 AnalyzeNode[node_DRNode, nodSolution_NodeSolution] := Module[
@@ -485,10 +597,23 @@ AnalyzeNode[node_DRNode, nodSolution_NodeSolution] := Module[
 	labels = ("c" <> ToString[#]&) /@ cayleys;
 	vars = Unique /@ labels;
 	{mins, maxs} = Transpose @ (MinMax /@ (Lookup[cayleys]@ Last @ nodSolution));
-	Manipulate[node["Realize"[#1]], ##2]&[
+	Manipulate[NodeManipulateRenderingFunction[node, #1], ##2]&[
 		((#[Association[Thread[cayleys -> vars]]]&) /@ (First @ nodSolution)), 
 		Sequence @@ MapThread[{{#1, #3, #2}, #3, #4}&, {vars, labels, mins, maxs}]
 	]
+];
+
+
+dropDiff[node_DRNode, graph_Graph] := Module[
+	{
+		rootgraph = node["Root"]["Graph"], dropEdge, CayleyLength
+	},
+	
+	dropEdge = EdgeList[rootgraph][[node["TargetDrop"]]];
+    EuclideanDistance[
+        PropertyValue[{graph, First[dropEdge]}, VertexCoordinates],
+        PropertyValue[{graph, Last[dropEdge]}, VertexCoordinates]
+    ] - PropertyValue[{rootgraph, dropEdge}, EdgeWeight]
 ];
 
 dropDiff[node_DRNode, Solution_Association, sample_Association] := Module[
@@ -501,6 +626,7 @@ dropDiff[node_DRNode, Solution_Association, sample_Association] := Module[
     EuclideanDistance[coordsList[First[dropEdge]], coordsList[Last[dropEdge]]] -
         PropertyValue[{rootgraph, dropEdge}, EdgeWeight]
 ];
+
 
 DRNode::dupz = "`1` zeros are found.";
 DRNode::noz = "no zeros are found.";
@@ -520,19 +646,25 @@ DRNode[objID_]["Expand"[NodeSolution[Solution_Association, Domain_Association]]]
     sampleLists = {};
     findZero[Sample_Association] := Module[
 		{
-			targets, sampleList, tmpSample, tmpZeros, findDom, res, cntZeros
+			targets, sampleList, tmpSample, tmpZeros, findDom, res, cntZeros, refinedDomain
 		},
         
-
-        targets = subDivide[obj["TargetCayley"], Domain[obj["TargetCayley"]]];
+		refinedDomain = IntervalIntersection[Domain[obj["TargetCayley"]], refineInterval[obj, obj["TargetCayley"], Sample]];
+        targets = subDivide[obj["TargetCayley"], refinedDomain];
         sampleList = ({
             #[obj["TargetCayley"]], 
             dropDiff[obj, Solution, Append[Sample, #]]
         }& /@ targets);
 
         (*AppendTo[sampleLists, Prepend[Sample[First@obj["FreeCayley"]]] /@ sampleList];*)
-
+		If[MatchQ[sampleList, {_Real, _Real}],
+			Print[targets]
+		];
         tmpZeros = findZeros[sampleList];
+        If[Head[tmpZeros] === findZeros,
+            Print[sampleList];
+            Abort[]
+        ];
           
         If[Length[tmpZeros] == 0, 
             If[Length[obj["FreeCayley"]] == 0,
@@ -542,7 +674,12 @@ DRNode[objID_]["Expand"[NodeSolution[Solution_Association, Domain_Association]]]
             ];
         ];
         
-        If[Length[tmpZeros] > 2, Message[DRNode::dupz, Length[tmpZeros]]];
+        If[Length[tmpZeros] > 2,
+            Message[DRNode::dupz, Length[tmpZeros]];
+            Echo[sampleList];
+            Echo[Sample];
+            Abort[];
+        ];
         
         If[Length[obj["FreeCayley"]] == 0,
             tmpZeros[[All,1]],
@@ -574,6 +711,7 @@ DRNode[objID_]["Expand"[NodeSolution[Solution_Association, Domain_Association]]]
     
     interpZeros /@ Transpose[findZero /@ samples]
 ];
+
 
 findZeros[samplelist:{{_Real, _Real}..}] := Module[
     {interp, domain, bsp, knots, controlpoints, polyform, t, zeros, zerodomain},
