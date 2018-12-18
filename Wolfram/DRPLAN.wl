@@ -214,19 +214,22 @@ calcInterval[node_DRNode] := Module[
 	addNum = Length[addEdgeIndices];
 	edgeToCol = Association[Thread[(addEdgeIndices -> Range[addNum])]];
 	
-	{m, b, lu} = ( Flatten /@ (Transpose @ Table[
+	{m, b, lu} = ((Flatten[#, 1]&) /@ (Transpose @ Table[
 		e = EdgeList[graph][[ei]];
 		commonVertex = Intersection[AdjacencyList[graph, First[e]], AdjacencyList[graph, Last[e]]];
-		cons = getConstraints[graph, {e, UndirectedEdge[First[e], #], UndirectedEdge[Last[e], #]}, edgeToCol, addNum]& /@ commonVertex;
-		Flatten /@ Transpose[cons],
+		cons = getConstraints[graph, {e, UndirectedEdge[First[e], #], UndirectedEdge[Last[e], #]}, edgeToCol, addNum]&
+		    /@ commonVertex;
+		(Flatten[#, 1]&) /@ Transpose[cons],
 		{ei, Keys[edgeToCol]}
 	]));
+	m = Normal/@m;
 	b = List @@@ b;
 	lu = lu
 	// Merge[(IntervalIntersection @@ #&)]
 	/* KeyValueMap[({{#1, 1} -> Min[#2], {#1, 2} -> Max[#2]}&)]
 	/* Flatten
-	/* (SparseArray[#, {addNum, 2}]&);
+	/* (SparseArray[# ~Join~ {{_, 1} -> -Infinity, {_,2} -> Infinity}, {addNum, 2}]&);
+	(*Echo@*MatrixForm/@{m, b, lu};*)
 	mins = Association[
 		(# -> LinearProgramming[SparseArray[{#} -> 1, addNum], m, List @@@ b, List @@@ lu].SparseArray[{#} -> 1, addNum])& /@ Range[addNum]
 	];
