@@ -1,9 +1,7 @@
 (* ::Package:: *)
 
-BeginPackage["Graphviz`"];
-
-ClearAll["Graphviz`*"];
-ClearAll["Graphviz`Private`*"];
+BeginPackage["GraphvizUtils`"];
+ClearAll[Evaluate[Context[] <> "*"]];
 
 
 ImportGraphviz::usage = "ImportGraphviz[dotfile_String] imports a graph from a dotfile.";
@@ -12,6 +10,7 @@ ConvertDotToCrdsAndCons::usage = "Convert a dotfile to Crds and Cons file.";
 
 
 Begin["`Private`"];
+ClearAll[Evaluate[Context[] <> "*"]];
 
 
 Options[ImportGraphviz]={

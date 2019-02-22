@@ -9,5 +9,6 @@ SourceFiles = {
 };
 
 WriteString[$Output, "Initializing DRPLAN... "];
+
 Get /@ SourceFiles;
 WriteString[$Output, "Done"];
