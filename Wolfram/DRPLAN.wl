@@ -938,22 +938,40 @@ scanSamples[node_DRNode, NodeSolution[Solution_Association, Domain_Association]]
     },
 
     (* refine the domain use triangle inequalities *)
-    refinedDomain = t`$rd = IntervalIntersection[Domain[node["TargetCayley"]], refineInterval[node, node["TargetCayley"], freeSample]];
+    refinedDomain = t`$rd = IntervalIntersection[
+        Domain[node["TargetCayley"]],
+        refineInterval[node, node["TargetCayley"],
+            (* we require the target cayley parameter not appears in its prior vertices' solutions *)
+            (#[freeSample]&) /@ KeySelect[Solution, (# < node["TargetCayley"]&)]
+        ]
+    ];
+    If[Head[refinedDomain] =!= Interval, Echo[t`rd]];
+    If[(Max[#] - Min[#]&)[refinedDomain] <= ($MachineEpsilon * $SampleDivisor), Echo[freeSample,"Empty Refined Interval"]; Return[{}]];
 
     targetSamples = getSamples[refinedDomain];
-    sampleList = (Replace[targetSample:Except[_Missing] :> Pair[
-        targetSample,
+    sampleList = (Replace[targetSample:Except[_Missing] :> (
         dropDiff[node, Solution, Append[freeSample, <|node["TargetCayley"] -> targetSample|>]]
-    ]] /@ targetSamples);
+        // Replace[{
+            $Failed :> ((*Echo[targetSample]; AbortNow = True;*) Missing["NoSolution"]),
+            diff_?NumericQ :> Pair[targetSample, diff],
+            unknown_ :> (Echo[unknown, "Unknown Result"]; Abort[])
+        }]
+    )] /@ targetSamples);
+
+    (* If[TrueQ[AbortNow], Echo[sampleList]; Abort[]]; *)
     
     threshold = $ResampleRatio * dropLength[node];
     approxIntervals = findApproxIntervals[sampleList, threshold];
     targetRefinedSamples = getDenseSamples[targetSamples, approxIntervals];
     
-    refinedSampleList = (Replace[targetSample:Except[_Missing] :> Pair[
-        targetSample,
+    refinedSampleList = (Replace[targetSample:Except[_Missing] :> (
         dropDiff[node, Solution, Append[freeSample, <|node["TargetCayley"] -> targetSample|>]]
-    ]] /@ targetRefinedSamples);
+        // Replace[{
+            $Failed :> Missing["NoSolution"],
+            diff_?NumericQ :> Pair[targetSample, diff],
+            unknown_ :> (Echo[unknown, "Unknown Result"]; Abort[])
+        }]
+    )] /@ targetRefinedSamples);
 
     sampleList = SparseArray[
         Most[ArrayRules[sampleList]] ~Join~ Most[ArrayRules[refinedSampleList]],
@@ -967,13 +985,10 @@ scanSamples[node_DRNode, NodeSolution[Solution_Association, Domain_Association]]
 
     (* To draw 3D points plot, do not delete the following line*)
     If[Length[node["FreeCayley"]] > 0,
-        AppendTo[$sampleLists, 
-            Replace[
-                ({pos_} -> Pair[x_, y_]) :> (
-                    {freeSample[First@node["FreeCayley"]], x, y}
-                )
-            ] /@ Most[ArrayRules[sampleList]]
-        ];
+        AppendTo[$sampleLists,
+            sampleList // ArrayRules // Most
+            // Cases[({pos_} -> Pair[x_, y_]) :> {freeSample[First@node["FreeCayley"]], x, y}]
+        ]
     ];
 
     (* If[MatchQ[sampleList, {_Real, _Real}],
@@ -986,14 +1001,17 @@ scanSamples[node_DRNode, NodeSolution[Solution_Association, Domain_Association]]
             interpSampleList = List@@@Select[sampleList, Not@*MissingQ] (* DeleteMissing does not work for SparseArray *)
         },
 
-        interp = Interpolation[interpSampleList, InterpolationOrder -> 3, Method -> "Spline"];
-        interpd = interp';
-        tmpZeros = (findZeros[interp, interpSampleList])
-        // Replace[_findZeros :> (
-            (* wront type *)
-            Print[sampleList];
-            Abort[]
-        )];
+        If[Length[interpSampleList] > 0,
+            interp = Interpolation[interpSampleList, InterpolationOrder -> 3, Method -> "Spline"];
+            interpd = interp';
+            tmpZeros = (findZeros[interp, interpSampleList])
+            // Replace[_findZeros :> (
+                (* wront type *)
+                Print[sampleList];
+                Abort[]
+            )],
+            tmpZeros = {}
+        ]
     ]
 
     If[Length[node["FreeCayley"]] == 0,
@@ -1024,11 +1042,9 @@ findApproxIntervals[samplePoints_SparseArray, threshold_?NumericQ] := Module[
         booleanList, seqPos
     },
 
-    booleanList = SortBy[Replace[{
-        ({pos_} -> Pair[x_, y_]) :> (
-            {pos, Abs[y] <= threshold}
-        )
-    }] /@ Most[ArrayRules[samplePoints]], First];
+    booleanList = samplePoints // ArrayRules // Most
+    // Cases[({pos_} -> Pair[x_, y_]) :> {pos, Abs[y] <= threshold}]
+    // SortBy[First];
 
     seqPos = SequencePosition[booleanList, {{_, True}..}, Overlaps -> False];
 
@@ -1042,26 +1058,24 @@ findNearZerosIntervals[zeroTuples_SparseArray, domain_Interval, threshold_?Numer
         booleanList, seqPos
     },
 
-    booleanList = SortBy[Replace[
-        ({pos_} -> Tuple[zeroTuple_List]) :> {
-            pos,
-            zeroTuple 
-            // Replace[{
-                {} :> False,
-                _List :> (
-                    Select[Differences[Join[
-                        {Min[domain]},
-                        Part[zeroTuple, All, 1],
-                        {Max[domain]}
-                    ]], LessEqualThan[threshold * RegionMeasure[domain]]]
-                    // Length // Replace[{
-                        0 :> False,
-                        _ :> True
-                    }]
-                )
-            }]
-        }
-    ] /@ Most[ArrayRules[zeroTuples]], First];
+    booleanList = zeroTuples // ArrayRules // Most
+    // Cases[({pos_} -> Tuple[zeroTuple_List]) :> {
+        pos,
+        zeroTuple 
+        // Replace[{
+            {} :> False,
+            _List :> (
+                Join[{Min[domain]}, Part[zeroTuple, All, 1], {Max[domain]}]
+                // Differences
+                // Select[LessEqualThan[threshold * RegionMeasure[domain]]]
+                // Length // Replace[{
+                    0 :> False,
+                    _ :> True
+                }]
+            )
+        }]
+    }]
+    // SortBy[First];
 
     seqPos = SequencePosition[booleanList, {{_, True}..}, Overlaps -> False];
 
@@ -1081,7 +1095,8 @@ getDenseSamples[targetSamples_SparseArray, intervals:{{_Integer, _Integer}...}] 
 
     sampleIndices = Complement[
         Join[getDenseSamplesImpl /@ intervals],
-        Replace[({pos_} -> val_) :> pos] /@ Most[ArrayRules[targetSamples]] - 1
+        targetSamples // ArrayRules // Most
+        // Cases[({pos_} -> val_) :> pos - 1] (* the index is off-by-one*)
     ];
     SparseArray[
         Thread[(sampleIndices + 1) -> left + (right - left) * sampleIndices / $SampleDivisor],
@@ -1169,11 +1184,7 @@ getApproxZerosImpl[sampleList_SparseArray][{{trueZeros:{__}, intervals:{__}}, {u
             {trueZeros, Rest[intervals]},
             firstMinima = Take[sampleList, First[intervals]]
                 // ArrayRules // Most
-                // Map[Replace[
-                    ({pos_} -> Pair[x_, y_]) :> (
-                        {pos, Abs[y]}
-                    )
-                ]]
+                // Cases[({pos_} -> Pair[x_, y_]) :> {pos, Abs[y]}]
                 // MinimalBy[Last] // First // First
                 // (# + Part[intervals, 1, 1] - 1&);
             If[Length[umZeros] > 0 && Last[umZeros] > Part[sampleList, firstMinima, 1] - tolerance,
