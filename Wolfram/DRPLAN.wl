@@ -15,6 +15,7 @@ ClearAll[Evaluate[Context[] <> "*"]];
 Displacement::usage = "Displacement[node_DRNode, node_DRNode] combines two realizations for the same linkage and draw displancement vectors.";
 RigidityMatrix::usage = "RigidityMatrix[graph_Graph] returns the rigidity matrix.";
 InfinitesimallyRigidQ::usage = "InfinitismallyRigidQ[graph_Graph] gives True if the input DRNode is infinitesimally rigid .";
+DRNode::usage = "DRNode[\"property\"] returns the specified property of given DRNode.";
 NewDRNode::usage = "NewDRNode[dotfile_String] returns the root node of a DR-Plan tree, according to the specified dotfile path.";
 GenerateDRPlan::usage = "GenerateDRPlan[node_DRNode] constructs the DR-Plan for given root node."
 FlipAt::usage = "FlipAt[node_DRNode, vertices_List] flips given vertices in the list for given root node."
