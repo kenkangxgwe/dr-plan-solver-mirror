@@ -36,10 +36,10 @@ ImportGraphviz[dotfile_String, OptionsPattern[]] := Module[
 	edgeCustomProps = MapThread[( #1 -> { "EdgeType" -> #2 })&, {graphEdgeList, colorMap}]
 	    /. {RGBColor[0., 0., 0.] -> "Partial", RGBColor[0., 1., 0.] -> "Add", RGBColor[1., 0., 0.] -> "Drop"};
     vertexCustomProps = (# -> {"Flip" -> False})& /@ graphVertList;
-    Graph[graphEdgeList, Properties -> vertexCustomProps ~ Join ~ edgeCustomProps,
+    Graph[graphVertList, graphEdgeList, Properties -> vertexCustomProps ~ Join ~ edgeCustomProps,
         EdgeWeight -> edgeWeight, EdgeStyle -> edgeStyle, VertexLabels -> "Name", VertexCoordinates->
         If[OptionValue["ImportRealization"],
-            (VertexList[graphEdgeList]/.coordMap),
+            (graphVertList /.coordMap),
             Automatic
         ]
     ]
