@@ -734,24 +734,34 @@ NodeManipulateRenderingFunction[node_DRNode, CayleyLength_Association] := Module
     Column[{modifyGraph[graph], CayleyLength, dropDiff[node, graph]}]
 ];
 
-AnalyzeNode[node_DRNode, nodeSolution_NodeSolution] := Module[
+AnalyzeNode[node_DRNode, NodeSolution[Solution_Association, Domain_Association]] := Module[
     {
-        cayleys, vars, labels, mins, maxs
+        cayleys, vars, labels, mins, maxs, refinedDomain
     },
 
     cayleys = Append[node["FreeCayley"], node["TargetCayley"]];
     labels = ("c" <> ToString[#]&) /@ cayleys;
     vars = Unique /@ labels;
-    {mins, maxs} = Transpose @ (MinMax /@ (Lookup[cayleys]@ Last @ nodeSolution));
+    {mins, maxs} = Transpose @ (MinMax /@ (Lookup[cayleys]@ Domain));
+    (* refinedDomain = IntervalIntersection[
+        Domain[Last[cayleys]],
+        refineInterval[node, Most[cayleys],
+            (* we require the target cayley parameter not appears in its prior vertices' solutions *)
+            (#[<|Thread[Most[cayleys] -> Most[vars]]|>]&) /@ KeySelect[Solution, (# < Most[cayleys]&)]
+        ]
+    ];
+    AppendTo[mins, Min[refinedDomain]];
+    AppendTo[maxs, Max[refinedDomain]]; *)
     With[
         {
-            solutions = First @ nodeSolution,
+            solutions = Solution,
             staticcayleys = cayleys,
             staticnode = node,
             values = vars,
-            controls = Sequence @@ MapThread[{{#1, #3, #2}, #3, #4}&, {vars, labels, mins, maxs}]
+            controls = Echo[Sequence @@ MapThread[{{#1, #3, #2}, #3, #4}&, {vars, labels, mins, maxs}]]
         },
 
+        Abort[];
         (* Manipulate[NodeManipulateRenderingFunction[node, value], controls] *)
         Manipulate[
             NodeManipulateRenderingFunction[
@@ -787,7 +797,7 @@ dropDiff[node_DRNode, graph_Graph] := Module[
         PropertyValue[{graph, First[dropEdge]}, VertexCoordinates],
         PropertyValue[{graph, Last[dropEdge]}, VertexCoordinates]
     ] - dropLength[node]
-];
+]
 
 dropDiff[node_DRNode, Solution_Association, sample_Association] := Module[
     {
