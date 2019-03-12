@@ -526,8 +526,11 @@ DRNode[objID_]["Realize"[cayleyLength_Association]] := Module[
         obj = DRNode[objID], coordsList, tmpSubGraph
     },
 
-    coordsList = obj["CalcCoords"[VertexList[obj["Graph"]], cayleyLength]];
-    Subgraph[obj["Graph"], Keys[coordsList], VertexCoordinates -> Normal@coordsList, VertexLabels->"Name"]
+    Check[
+        coordsList = calcCoords[obj, VertexList[obj["Graph"]], cayleyLength];
+        Subgraph[obj["Graph"], Keys[coordsList], VertexCoordinates -> Normal@coordsList, VertexLabels->"Name"],
+        $Failed
+    ]
 ];
 
 
@@ -547,7 +550,7 @@ refineInterval[node_DRNode, TargetCayley_, CayleyLength_Association] := Module[
     commonvertex = Min[AdjacencyList[graph, v1] ~Intersection~ AdjacencyList[graph, v2]];
     {d1, d2} = Function[{edge},
         If[PropertyValue[{rootgraph, edge}, "EdgeType"] == "Add",
-           CayleyLength[EdgeIndex[rootgraph, edge]],
+           CayleyLength[EdgeIndex[rootgraph, edge]] // Replace[_Missing :> (Echo@CayleyLength; Abort[])],
            PropertyValue[{rootgraph, edge}, EdgeWeight]
         ]
     ] /@ {UndirectedEdge[commonvertex, v1], UndirectedEdge[commonvertex, v2]};
@@ -560,69 +563,97 @@ refineInterval[node_DRNode, TargetCayley_, CayleyLength_Association] := Module[
 (*CalcCoords*)
 
 
+calcCoords::negdel = "The determinant `1` is negative at vertex `2`.";
+calcCoords::nosol = "The graph is not realizable.";
+DRNode::negdel = "The determinant `1` is negative at vertex `2`.";
 DRNode::nosol = "The graph is not realizable.";
-DRNode[objID_]["CalcCoords"[{v1_, v2_}, CayleyLength_Association]] := <|v1 -> {0, 0}, v2 -> {PropertyValue[{DRNode[objID]["Root"]["Graph"], v1<->v2}, EdgeWeight], 0}|>;
-
-DRNode[objID_]["CalcCoords"[vertices_List, CayleyLength_Association]] := Module[
+calcCoords[node_DRNode, vertices_List, CayleyLength_Association] := Module[
     {
-        obj = DRNode[objID], curVertex = Last[vertices],
-        coordsList, preVertices, getEdgeLength, constrains, preCoords,
+        v1, v2
+    },
+
+    If[Length[vertices] > 2,
+
+        {v1, v2} = Take[vertices, 2];
+        {
+            Drop[vertices, 2],
+            <|
+                v1 -> {0, 0},
+                v2 -> {PropertyValue[{node["Root"]["Graph"], v1<->v2}, EdgeWeight], 0}
+            |>
+        }
+        // calcCoordsImpl[node, CayleyLength],
+        <||>
+    ]
+
+]
+
+calcCoordsImpl[node_DRNode, CayleyLength_Association][{{}, coordsList:Association[(_Integer -> {_?NumericQ, _?NumericQ})...]}] := coordsList
+calcCoordsImpl[node_DRNode, CayleyLength_Association][{{curVertex_Integer, restVertices___}, coordsList_Association}] := Module[
+    {
+        preVertices, getEdgeLength, constrains, preCoords,
         preLengths, dx, dy, d0, mx, my, dd, md, delta, sign, solutions, solution
     },
 
-(*Print[CayleyLength];*)
-    coordsList = obj["CalcCoords"[Most[vertices], CayleyLength]];
-    (*Print[coordsList];*)
-    If[Length[coordsList] == 0,
+    If[Length[coordsList] < 2, Return[{{}, <||>}]];
+
+    preVertices = AdjacencyList[node["Graph"], curVertex]
+    // Select[(# < curVertex && PropertyValue[{node["Root"]["Graph"], #<->curVertex}, "EdgeType"] != "Drop")&]
+    // Sort;
+    On[Assert];
+    Assert[Length[preVertices] == 2];
+    Off[Assert];
+
+    getEdgeLength[edge_UndirectedEdge] := If[PropertyValue[{node["Root"]["Graph"], edge}, "EdgeType"] == "Add",
+        CayleyLength[EdgeIndex[node["Root"]["Graph"], edge]],
+        PropertyValue[{node["Root"]["Graph"], edge}, EdgeWeight]
+    ];
+
+    preCoords = coordsList /@ preVertices;
+    If[!MatchQ[preCoords, {{_?NumericQ, _?NumericQ}, {_?NumericQ, _?NumericQ}}],
+        Echo[curVertex, "curVertex"];
+        Echo[preVertices, "preVertices"];
+        Echo[coordsList, "preCoords"];
+        Print[CayleyLength];
+        Return[{{}, <||>}]
+    ];
+
+    preLengths = getEdgeLength /@ Thread[UndirectedEdge[preVertices, curVertex]];
+    {dx, dy} = Subtract @@ preCoords;
+    d0 = getEdgeLength[UndirectedEdge @@ preVertices] (*EuclideanDistance @@ preCoords*);
+    {mx, my} = Plus @@ preCoords / 2;
+    dd = Subtract @@ preLengths;
+    md = Plus @@ preLengths /2;
+    delta = Chop[(d0 - dd) * (md - d0 / 2)] * (d0 + dd) * (md + d0 / 2);
+    If[ListQ[delta], Print["delta: ", preLengths, CayleyLength]];
+    solutions = If[delta < 0,
+        Message[calcCoords::negdel, delta, curVertex];
+        (* Echo[CayleyLength, "CayleyLength"]; *)
+        (* Echo[t`$rd, "Refined Domain"];
+        Echo[d0, "d0"];
+        Echo[dd, "dd"];
+        Echo[md, "md"];
+        Echo[preLengths, "preLengths"]; *)
+        (* Abort[]; *)
+        (* Return["Unrealizable"]; *)
         {},
-        preVertices = Sort[Select[AdjacencyList[obj["Graph"], curVertex], (# < curVertex && PropertyValue[{obj["Root"]["Graph"], #<->curVertex}, "EdgeType"] != "Drop")&]];
-        On[Assert];
-        Assert[Length[preVertices] == 2];
-        Off[Assert];
+        sign = If[PropertyValue[{node["Root"]["Graph"], curVertex}, "Flip"], 1, -1];
+        {(- dd * md * {dx, dy} + {-1, 1} * sign * {dy, dx} * Sqrt[delta]) / d0^2 + {mx, my}}
+    ];
+    (*constrains = And @@ (
+        (SquaredEuclideanDistance[coordsList[#], {x, y}] == getEdgeLength[# \[UndirectedEdge] curVertex]^2)&
+            /@ preVertices);
 
-        getEdgeLength[edge_UndirectedEdge] := If[PropertyValue[{obj["Root"]["Graph"], edge}, "EdgeType"] == "Add",
-            CayleyLength[EdgeIndex[obj["Root"]["Graph"], edge]],
-            PropertyValue[{obj["Root"]["Graph"], edge}, EdgeWeight]
-        ];
-
-        preCoords = coordsList /@ preVertices;
-        If[!MatchQ[preCoords, {{_?NumericQ, _?NumericQ}, {_?NumericQ, _?NumericQ}}],
-            Print["preCoords", coordsList];
-            Print[CayleyLength];
-            Return["Missing Keys"]
-        ];
-
-        preLengths = getEdgeLength[UndirectedEdge[#, curVertex]]& /@ preVertices;
-        {dx, dy} = Subtract @@ preCoords;
-        d0 = EuclideanDistance @@ preCoords;
-        {mx, my} = Plus @@ preCoords / 2;
-        dd = Subtract @@ preLengths;
-        md = Plus @@ preLengths /2;
-        delta = Chop[(d0^2 - dd^2) * (md^2 - d0^2 / 4)];
-        If[ListQ[delta], Print["delta: ", preLengths, CayleyLength]];
-        solutions = If[delta < 0,
-            Echo[delta, "delta"];
-            Echo[CayleyLength, "CayleyLength"];
-            Echo[t`$rd, "Refined Domain"];
-            Return["Unrealizable"];
-            {},
-            sign = If[PropertyValue[{obj["Root"]["Graph"], curVertex}, "Flip"], 1, -1];
-            {(- dd * md * {dx, dy} + {-1, 1} * sign * {dy, dx} * Sqrt[delta]) / d0^2 + {mx, my}}
-        ];
-        (*constrains = And @@ (
-            (SquaredEuclideanDistance[coordsList[#], {x, y}] == getEdgeLength[# \[UndirectedEdge] curVertex]^2)&
-                /@ preVertices);
-
-        constrains = constrains && (If[PropertyValue[{obj["RootGraph"], curVertex}, "Flip"], Less, Greater ]
-            @@ {DRPLAN["CCW"[#1, #2, {x, y}]]& @@ preCoords, 0});
-        solutions = Solve[constrains, {x, y}, Reals];*)
-        If[Length[solutions] == 0,
-            Message[DRNode::nosol]; (*Print[constrains];*) {},
-            coordsList ~ Join ~ <|curVertex -> (First[solutions])|>
-        ]
+    constrains = constrains && (If[PropertyValue[{node["RootGraph"], curVertex}, "Flip"], Less, Greater ]
+        @@ {DRPLAN["CCW"[#1, #2, {x, y}]]& @@ preCoords, 0});
+    solutions = Solve[constrains, {x, y}, Reals];*)
+    If[Length[solutions] == 0,
+        Message[calcCoords::nosol]; (*Print[constrains];*)
+        {{}, <||>},
+        {{restVertices}, Append[coordsList, curVertex -> (First[solutions])]}
     ]
-];
 
+] // Replace[Return[val_] :> val] // calcCoordsImpl[node, CayleyLength]
 
 
 (* ::Subsection:: *)
@@ -722,6 +753,8 @@ NodeManipulateRenderingFunction[node_DRNode, CayleyLength_Association] := Module
     },
 
     graph = node["Realize"[CayleyLength]];
+    If[FailureQ[graph], Return[$Failed]];
+
     cayleyEdges = Flatten @ {
         Part[EdgeList[node["Root"]["Graph"]], node["FreeCayley"]],
         Part[EdgeList[node["Root"]["Graph"]], node["TargetCayley"]]
@@ -805,11 +838,14 @@ dropDiff[node_DRNode, Solution_Association, sample_Association] := Module[
 	  },
 
     CayleyLength = ((#[sample]&) /@ Solution);
-    coordsList = node["CalcCoords"[VertexList[node["Graph"]], CayleyLength]];
-    dropEdge = EdgeList[rootgraph][[node["TargetDrop"]]];
-    EuclideanDistance[coordsList[First[dropEdge]], coordsList[Last[dropEdge]]]
-    - dropLength[node]
-];
+    Check[
+        coordsList = calcCoords[node, VertexList[node["Graph"]], CayleyLength];
+        (* coordsList = node["CalcCoords"[VertexList[node["Graph"]], CayleyLength]]; *)
+        dropEdge = Part[EdgeList[rootgraph], node["TargetDrop"]];
+        EuclideanDistance[coordsList[First[dropEdge]], coordsList[Last[dropEdge]]] - dropLength[node],
+        $Failed
+    ]
+]
 
 
 $SampleDivisor = 2^17 (* the minimal distance between samples should be 1/$SampleDivisor *)
