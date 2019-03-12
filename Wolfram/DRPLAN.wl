@@ -266,7 +266,7 @@ GenerateDRNode[{node_DRNode, edgeIndex_Integer?NonNegative, dropCounter_Integer?
             }];
             GenerateDRNode[{node, edgeIndex - 1, dropCounter + 1}, {freeCayley, newSubNodes}]
         ),
-        "Add" :> GenerateDRNode[{node, edgeIndex - 1, dropCounter}, {Append[freeCayley, rootEdgeIndex], subNodes}],
+        "Add" :> GenerateDRNode[{node, edgeIndex - 1, dropCounter}, {Prepend[freeCayley, rootEdgeIndex], subNodes}],
         "Partial" :> GenerateDRNode[{node, edgeIndex - 1, dropCounter}, {freeCayley, subNodes}]
     }]
 ]
