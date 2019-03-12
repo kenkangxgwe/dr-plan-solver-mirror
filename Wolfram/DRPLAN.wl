@@ -1009,7 +1009,7 @@ scanSamples[node_DRNode, NodeSolution[Solution_Association, Domain_Association]]
 ]
 
 
-findApproxIntervals[samplePoints_SparseArray, threshold_Real] := Module[
+findApproxIntervals[samplePoints_SparseArray, threshold_?NumericQ] := Module[
     {
         booleanList, seqPos
     },
@@ -1027,7 +1027,7 @@ findApproxIntervals[samplePoints_SparseArray, threshold_Real] := Module[
 ]
 
 
-findNearZerosIntervals[zeroTuples_SparseArray, domain_Interval, threshold_Real] := Module[
+findNearZerosIntervals[zeroTuples_SparseArray, domain_Interval, threshold_?NumericQ] := Module[
     {
         booleanList, seqPos
     },
@@ -1089,7 +1089,7 @@ getDenseSamplesImpl[{start_Integer, end_Integer}] := (
 
 
 (* Find zeros in a interpolating function *)
-findZeros[interp_InterpolatingFunction, samplelist:{{_Real, _Real}..}] := Module[
+findZeros[interp_InterpolatingFunction, samplelist:{{_?NumericQ, _?NumericQ}..}] := Module[
     {
         domain, bsp, knots, controlpoints, polyform, t, zeros, zerodomain
     },
@@ -1127,7 +1127,7 @@ getApproxZeros[trueZeros_List, sampleList_SparseArray, zeroMinima_List] := Modul
 
 ]
 
-getApproxZerosImpl[sampleList_SparseArray][{{{}, {}}, unmatches:{{___Real}, {___Integer}}}] := unmatches
+getApproxZerosImpl[sampleList_SparseArray][{{{}, {}}, unmatches:{{___?NumericQ}, {___Integer}}}] := unmatches
 getApproxZerosImpl[sampleList_SparseArray][{{{}, intervals:{__}}, unmatches_List}] := (* continue as if there is a zero at infinity point *)
     getApproxZerosImpl[sampleList][{{{Infinity}, intervals}, unmatches}]
 getApproxZerosImpl[sampleList_SparseArray][{{trueZeros:{__}, {}}, unmatches_List}] := (* continue as if there is an interval at infinity point *)
@@ -1220,7 +1220,7 @@ getBoundaryApproxZeros[sampleList_SparseArray, zeroIntervals:{__}] := Module[
 ]
 
 
-interpZeros[node_DRNode, NodeSolution[Solution_Association, Domain_Association]][samples_, sampleList:{(_Real|_Missing)..}] := Module[
+interpZeros[node_DRNode, NodeSolution[Solution_Association, Domain_Association]][samples_, sampleList:{(_?NumericQ|_Missing)..}] := Module[
     {
         interpList, zeroFunc, targetRule, newSolution, newDomain
     },
