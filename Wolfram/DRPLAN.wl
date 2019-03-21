@@ -159,6 +159,7 @@ NewDRNode[graph:(_Graph | _Subgraph)] := Module[
     newNode["SubNodes"] = {};
     newNode["Graph"] = graph;
     newNode["Root"] = newNode;
+    newNode["Solutions"] = Missing["NotSolved"];
     newNode
 ];
 
@@ -671,10 +672,22 @@ getNodeValue[nodeSolution_NodeSolution] := Module[
 ]
 
 SolveNode::invtgt = "Invalid targest tuple: `1`"
-SolveNode[node_DRNode, targets_:{}] := Module[
+Options[SolveNode] = {
+    "UseCache" -> True
+}
+SolveNode[node_DRNode, targets_:{}, o:OptionsPattern[]] := Module[
     {
-      nodeSolutions, curTarget, restTargets
+      nodeSolutions, curTarget, restTargets,
+      (* options *)
+      useCache
     },
+
+    {useCache} = OptionValue[SolveNode, {o}, {"UseCache"}];
+
+    (* Memoization *)
+    If[useCache && !MissingQ[node["Solutions"]],
+        Return[node["Solutions"]]
+    ];
 
     (* Print["Solving " <> ToString[node]]; *)
     If[node["IsCayleyNode"],
@@ -691,8 +704,10 @@ SolveNode[node_DRNode, targets_:{}] := Module[
             _ :> (Message[SolveNode::invtgt, targets]; Abort[])
         }];
 
-        nodeSolutions = mergeSolution[MapThread[SolveNode, {node["SubNodes"], restTargets}]];
-        Echo[#, "nodeSolutions"]& @ Part[Flatten @ (SolveDFlip[node] /@ nodeSolutions), curTarget]
+        nodeSolutions = mergeSolution[MapThread[SolveNode[#1, #2, "UseCache" -> useCache]&, {node["SubNodes"], restTargets}]];
+        (* Memoization *)
+        node["Solutions"] = Part[Flatten @ (Curry[SolveDFlip, 2][node] /@ nodeSolutions), curTarget];
+        Echo[#, "nodeSolutions"]& @ node["Solutions"]
     ]
 ];
 
