@@ -406,7 +406,8 @@ DRNodeVRFunc[type_, Dynamic[selectedNode_]][rk_, vk_DRNode] := Block[
     {
     },
 
-    Inset[Button[Column[{
+    Inset[Setter[Dynamic[selectedNode], vk, First[vk]], rk]
+    (* Inset[Button[Column[{
         If[type === "Graph",
            HighlightNode[vk],
            Column @ (ToString/@{
@@ -424,7 +425,7 @@ DRNodeVRFunc[type_, Dynamic[selectedNode_]][rk_, vk_DRNode] := Block[
             Nothing
         ]
     }],
-    selectedNode = vk, Appearance->None], rk]
+    selectedNode = vk, Appearance->None], rk] *)
 ];
 
 
@@ -437,15 +438,41 @@ PrintDRPlan[node_DRNode]:= DynamicModule[
         Row[{
             Column[{
                 Grid[{{
-                    TreePlot[
+                    (* openerView[node, Dynamic[selectedNode]], *)
+                    LayeredGraphPlot[
+                        node["EdgeRules"],
+                        Top,
+                        VertexRenderingFunction -> fn[nodeType],
+                        EdgeRenderingFunction -> ({Dashed, Opacity[.5], Line[#1]}&),
+                        ImageSize -> 100
+                    ],
+                    Column[{
+                        HighlightNode[selectedNode],
+                        Grid[{
+                            {"Target Cayley", Part[EdgeList[selectedNode["Root"]["Graph"]], selectedNode["TargetCayley"]]},
+                            {"Free Cayleys", Row[Part[EdgeList[selectedNode["Root"]["Graph"]], selectedNode["FreeCayley"]], ","]},
+                            {"All Cayleys", Pane[Row[Part[EdgeList[selectedNode["Root"]["Graph"]], selectedNode["AllCayley"]], ","], 300]},
+                            If[selectedNode["IsCayleyNode"],
+                                {"Interval", MinMax[selectedNode["Interval"]]},
+                                Nothing
+                            ],
+                            If[!MissingQ[selectedNode["Solutions"]],
+                                {"Solutions", selectedNode["Solutions"]},
+                                Nothing
+                            ]
+                        }, Alignment -> {{Right, Left}, Top}]
+                    }],
+                    (* TreePlot[
                         node["EdgeRules"],
                         Top,
                         node,
+                        AspectRatio -> .5,
                         VertexRenderingFunction -> fn[nodeType],
                         EdgeRenderingFunction -> ({Dashed, Opacity[.5], Line[#1]}&),
                         ImageSize -> Large
-                    ],
-                    If[selectedNode =!= Null,
+                    ], *)
+
+                    (* If[selectedNode =!= Null,
                         Column[{
                             If[trackQ, 
                                 trackNode[selectedNode],
@@ -458,17 +485,31 @@ PrintDRPlan[node_DRNode]:= DynamicModule[
                             (*Dynamic[OpenerView[{"SamplePoints", Reap[selectedNode["SolveNode"[]]]}, Method \[Rule] "Active"]]*)
                         }],
                         Nothing
-                    ]
-                }}]
+                    ] *)
+                    Nothing
+                }}, Alignment -> Center]
             }]
         }]]
         ,
-        {{nodeType, "Graph", "Node Type"}, {"Graph", "Text"}},
-        {{selectedNode, Null, "Selected Node"}, (Row[{#1, " ", Button["Reset", selectedNode = Null]}]&)},
+        (* {{nodeType, "Graph", "Node Type"}, {"Graph", "Text"}}, *)
+        (* {{selectedNode, Null, "Selected Node"}, (Row[{#1, " ", Button["Reset", selectedNode = Null]}]&)}, *)
+        {{selectedNode, node, "Selected Node"}},
         {{trackQ, False, "Track Node?"}, {True, False}},
         {{solveQ, False, "Solve Node?"}, {True, False}}
     ]
 ];
+
+
+openerView[node_DRNode, Dynamic[selectedNode_]] := If[node["SubNodes"] == {},
+    Row[{Setter[Dynamic[selectedNode], node], ""}],
+    OpenerView[
+        {
+            Row[{Setter[Dynamic[selectedNode], node], ""}],
+            Column[Curry[openerView][Dynamic[selectedNode]] /@ node["SubNodes"]]
+        },
+        True, ImageSize -> All
+    ]
+]
 
 
 EdgeColorMap = <|
@@ -488,7 +529,8 @@ HighlightNode[node_DRNode] := Module[
     HighlightGraph[
         rootgraph,
         EdgeList[node["Graph"]],
-        GraphHighlightStyle -> "DehighlightFade"
+        GraphHighlightStyle -> "DehighlightFade",
+        ImageSize -> 400
 	  ]
 ];
 
