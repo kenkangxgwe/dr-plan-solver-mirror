@@ -535,15 +535,25 @@ HighlightNode[node_DRNode] := Module[
 ];
 
 
-Format[nodeSolution:NodeSolution[_Association..]] := Interpretation[NodeSolution[Panel[Column[{
+Format[nodeSolution:NodeSolution[solution_Association, domain_Association, dFlip_List]] := Interpretation[NodeSolution[Panel[Column[{
 	"Solution:",
-	Panel[Column @ Normal @ First @ nodeSolution],
+	Panel[Column @ Normal @ solution],
 	"Domain:",
-	Panel[Column @ Normal @ Last @ nodeSolution]
+	Panel[Column @ Normal @ domain],
+    "DFlip:",
+	Panel[dFlip]
 }]]], nodeSolution];
 
 
-ToString[nodeSolution_NodeSolution] ^:= "NodeSolution:\n" <> "     Solution:\n" <> StringJoin[("        " <> ToString[#] <> "\n"&) /@ (Normal @ First @ nodeSolution)] <> "    Domain:\n" <> StringJoin[("        " <> ToString[#] <> "\n"&) /@ (Normal @ Last @ nodeSolution)];
+ToString[NodeSolution[solution_Association, domain_Association, dFlip_List]] ^:= StringJoin[
+    "NodeSolution:\n",
+    "    Solution:\n",
+    {"        ", ToString[#], "\n"}& /@ (Normal @ solution),
+    "    Domain:\n",
+    {"        ", ToString[#], "\n"}& /@ (Normal @ domain),
+    "    DFlip:\n",
+    "        ", ToString[dFlip]
+]
 
 
 
@@ -606,10 +616,8 @@ refineInterval[node_DRNode, TargetCayley_, CayleyLength_Association] := Module[
 (*CalcCoords*)
 
 
-calcCoords::negdel = "The determinant `1` is negative at vertex `2`.";
+calcCoords::negdel = "The determinant `1` is negative at vertex `2` with cayleylength `3`.";
 calcCoords::nosol = "The graph is not realizable.";
-DRNode::negdel = "The determinant `1` is negative at vertex `2`.";
-DRNode::nosol = "The graph is not realizable.";
 calcCoords[node_DRNode, vertices_List, CayleyLength_Association] := Module[
     {
         v1, v2
@@ -670,7 +678,7 @@ calcCoordsImpl[node_DRNode, CayleyLength_Association][{{curVertex_Integer, restV
     delta = Chop[(d0 - dd) * (md - d0 / 2)] * (d0 + dd) * (md + d0 / 2);
     If[ListQ[delta], Print["delta: ", preLengths, CayleyLength]];
     solutions = If[delta < 0,
-        Message[calcCoords::negdel, delta, curVertex];
+        Message[calcCoords::negdel, delta, curVertex, CayleyLength];
         (* Echo[CayleyLength, "CayleyLength"]; *)
         (* Echo[t`$rd, "Refined Domain"];
         Echo[d0, "d0"];
@@ -707,9 +715,9 @@ SolveDRPlan[node_DRNode, targets_List:{}] := getNodeValue /@ SolveNode[node, tar
 
 getNodeValue[nodeSolution_NodeSolution] := Module[
     {
-      solution, domain
+      solution
     },
-    {solution, domain} = List @@ nodeSolution;
+    solution = Part[nodeSolution, 1];
     (#[{}]&) /@ solution
 ]
 
@@ -735,8 +743,9 @@ SolveNode[node_DRNode, targets_:{}, o:OptionsPattern[]] := Module[
     If[node["IsCayleyNode"],
         UnEcho[#, "nodeSolutions", (ToString/@#)&]& @
         {NodeSolution[
-            <|node["TargetCayley"] -> (First @* (Curry[Through[#1[#2]]&, 2][Lookup /@ node["FreeCayley"]]))|>,
-            <|node["TargetCayley"] -> node["Interval"]|>
+            <|node["TargetCayley"] -> (First @* (Curry[Through[#1[#2]]&, 2][Lookup /@ node["FreeCayley"]]))|>, (* identity function *)
+            <|node["TargetCayley"] -> node["Interval"]|>, (* domain *)
+            {1} (* D-flip index *)
         ]},
 
         {curTarget, restTargets} = Replace[targets, {
@@ -746,36 +755,28 @@ SolveNode[node_DRNode, targets_:{}, o:OptionsPattern[]] := Module[
             _ :> (Message[SolveNode::invtgt, targets]; Abort[])
         }];
 
-        nodeSolutions = mergeSolution[MapThread[SolveNode[#1, #2, "UseCache" -> useCache]&, {node["SubNodes"], restTargets}]];
+        nodeSolutions = mergeNodeSolution @@ MapThread[SolveNode[#1, #2, "UseCache" -> useCache]&, {node["SubNodes"], restTargets}];
         (* Memoization *)
         node["Solutions"] = Part[Flatten @ (Curry[SolveDFlip, 2][node] /@ nodeSolutions), curTarget];
         Echo[#, "nodeSolutions"]& @ node["Solutions"]
     ]
-];
+]
 
 
-mergeSolution[nodeSolutionLists:{{_NodeSolution...}...}] := Module[
+mergeNodeSolution[nodeSolutions:PatternSequence[{__NodeSolution}..]] := 
+    Outer[mergeNodeSolution, nodeSolutions] // Flatten
+
+mergeNodeSolution[nodeSolutions__NodeSolution] := With[
     {
-        nodeSolutions
+        nodeSolutionList = List @@@ {nodeSolutions}
     },
 
-    Outer[
-        (NodeSolution @@ (Merge[First] /@ (UnEcho@Transpose @ (List @@@ {##}))))&,
-        Sequence @@ nodeSolutionLists
-	  ] // Flatten // UnEcho
-];
-
-
-DRNode[objID_]["ListSolution"[]] := Module[
-    {
-        obj = DRNode[objID], nodeSolutions, testFunc
-    },
-
-    If[!obj["IsCayleyNode"],
-        nodeSolutions = mergeSolution[SolveNode /@ obj["SubNodes"]];
-        Panel[Column[{ToString[#], Construct[AnalyzeNode, obj, #]}, Center]]& /@ nodeSolutions
+    NodeSolution[
+        Merge[First][Part[nodeSolutionList, All, 1]],
+        Merge[Apply[IntervalIntersection]][Part[nodeSolutionList, All, 2]],
+        Prepend[Part[nodeSolutionList, All, 3], Missing["DFlipNotSolved"]]
     ]
-];
+]
 
 
 (* ::Subsection:: *)
@@ -788,7 +789,7 @@ trackNode[node_DRNode] := Module[
     },
 
     If[node =!= Null && !node["IsCayleyNode"],
-       nodeSolutions = mergeSolution[SolveNode /@ node["SubNodes"]];
+       nodeSolutions = mergeNodeSolution @@ (SolveNode /@ node["SubNodes"]);
        Row[Panel[Column[{ToString[#], AnalyzeNode[node, #]}, Center]]& /@ nodeSolutions]
     ]
 ];
@@ -804,12 +805,13 @@ modifyGraph[graph_]:=Module[
 ];
 
 
-NodeManipulateRenderingFunction[node_DRNode, CayleyLength_Association] := Module[
+NodeManipulateRenderingFunction[node_DRNode, nodeSolution_NodeSolution, freeCayleys_Association] := Module[
     {
-        graph, cayleyEdges, droppedEdge
+        solution, graph, cayleyLength, cayleyEdges, droppedEdge, visualCayleyLength
     },
 
-    graph = node["Realize"[CayleyLength]];
+    cayleyLength = (#[freeCayleys]&) /@ First[nodeSolution];
+    graph = node["Realize"[cayleyLength]];
     If[FailureQ[graph], Return[$Failed]];
 
     cayleyEdges = Flatten @ {
@@ -821,18 +823,21 @@ NodeManipulateRenderingFunction[node_DRNode, CayleyLength_Association] := Module
     graph = Fold[SetProperty[{#1, #2}, EdgeStyle -> Green]&, graph, cayleyEdges];
     graph = SetProperty[{graph, droppedEdge}, EdgeStyle -> Red];
 
-    Column[{modifyGraph[graph], CayleyLength, dropDiff[node, graph]}]
+    visualCayleyLength = KeyMap[Part[EdgeList[node["Root"]["Graph"]], #]&, cayleyLength];
+
+    Column[{modifyGraph[graph], visualCayleyLength, dropDiff[node, graph]}]
 ];
 
-AnalyzeNode[node_DRNode, NodeSolution[Solution_Association, Domain_Association]] := Module[
+AnalyzeNode[node_DRNode, nodeSolution_NodeSolution] := Module[
     {
-        cayleys, vars, labels, mins, maxs, refinedDomain
+        domain, cayleys, vars, labels, mins, maxs, refinedDomain
     },
 
+    domain = Part[nodeSolution, 2];
     cayleys = Append[node["FreeCayley"], node["TargetCayley"]];
     labels = ("c" <> ToString[#]&) /@ cayleys;
     vars = Unique /@ labels;
-    {mins, maxs} = Transpose @ (MinMax /@ (Lookup[cayleys]@ Domain));
+    {mins, maxs} = Transpose @ (MinMax /@ (Lookup[cayleys]@ domain));
     (* refinedDomain = IntervalIntersection[
         Domain[Last[cayleys]],
         refineInterval[node, Most[cayleys],
@@ -844,19 +849,20 @@ AnalyzeNode[node_DRNode, NodeSolution[Solution_Association, Domain_Association]]
     AppendTo[maxs, Max[refinedDomain]]; *)
     With[
         {
-            solutions = Solution,
-            staticcayleys = cayleys,
-            staticnode = node,
-            values = vars,
-            controls = Echo[Sequence @@ MapThread[{{#1, #3, #2}, #3, #4}&, {vars, labels, mins, maxs}]]
+            constNodeSolution = nodeSolution,
+            constCayleys = cayleys,
+            constNode = node,
+            constVars = vars,
+            controls = Sequence @@ MapThread[{{#1, #3, #2}, #3, #4}&, {vars, labels, mins, maxs}]
         },
 
-        Abort[];
+        (* Abort[]; *)
         (* Manipulate[NodeManipulateRenderingFunction[node, value], controls] *)
         Manipulate[
             NodeManipulateRenderingFunction[
-                staticnode,
-                ((#[Association[Thread[staticcayleys -> values]]]&) /@ solutions)
+                constNode,
+                constNodeSolution,
+                Association[Thread[constCayleys -> constVars]]
             ],
            controls
         ]
@@ -949,18 +955,19 @@ getSamples[interval_Interval] := Module[
 SolveDFlip::dupz = "`1` zeros are found.";
 SolveDFlip::noz = "no zeros are found.";
 SolveDFlip::nosolplan = "no solution for the dr-plan.";
-
-SolveDFlip[node_DRNode][nodeSolution:NodeSolution[Solution_Association, Domain_Association]] := Module[
+(* This function solves the given dropped flip. *)
+SolveDFlip[node_DRNode, nodeSolution_NodeSolution] := Module[
     {
-        freeSamples, interpolant,
+        domain, freeSamples, interpolant,
         incList, decList, time, firstSamples, firstResults,
         resampleTargets, resampleList, nearRatio = 0.30, nearZerosIntervals,
         refinedFreeSamples, refinedResults,
         secondSamples, secondResults, finalSamples, finalResults
 	},
 
+    domain = Part[nodeSolution, 2];
     freeSamples = If[Length[node["FreeCayley"]] != 0,
-        SparseArray[Values[getSamples /@ KeyTake[Domain, First[node["FreeCayley"]]]]],
+        SparseArray[Values[getSamples /@ KeyTake[domain, First[node["FreeCayley"]]]]],
         Echo["Last Cayley"];
         $on = True;
         {}
@@ -992,7 +999,7 @@ SolveDFlip[node_DRNode][nodeSolution:NodeSolution[Solution_Association, Domain_A
     If[node["FreeCayley"] === {},
         finalSamples = firstSamples;
         finalResults = firstResults,
-        nearZerosIntervals = findNearZerosIntervals[firstResults, Domain[First[node["FreeCayley"]]], nearRatio];
+        nearZerosIntervals = findNearZerosIntervals[firstResults, domain[First[node["FreeCayley"]]], nearRatio];
         refinedFreeSamples = getDenseSamples[firstSamples, nearZerosIntervals];
         (* If[nearZerosIntervals =!= {}, Echo[refinedFreeSamples]];
         Abort[]; *)
@@ -1017,25 +1024,30 @@ SolveDFlip[node_DRNode][nodeSolution:NodeSolution[Solution_Association, Domain_A
     (* interpZeros[firstSamples, #]& /@ Transpose[firstResults] *)
     (* Echo@threadZeros[Identity@@@Select[finalResults, Not@*MissingQ]]; *)
     (* Abort[]; *)
-    interpZeros[node, nodeSolution][
-        Select[finalSamples, Not@*MissingQ], #
-    ]& /@ threadZeros[Identity@@@Select[finalResults, Not@*MissingQ]]
+    MapIndexed[
+        interpZeros[node, nodeSolution, Select[finalSamples, Not@*MissingQ], #1, First[#2]]&,
+        threadZeros[Identity@@@Select[finalResults, Not@*MissingQ]]
+    ]
 
-];
+]
 
 
-scanSamples[node_DRNode, NodeSolution[Solution_Association, Domain_Association]][freeSample_Association] := Module[
+scanSamples[node_DRNode, nodeSolution_NodeSolution][freeSample_Association] := Module[
     {
+        solution, domain,
         refinedDomain, targetSamples, sampleList, approxIntervals, targetRefinedSamples, refinedSampleList,
         threshold, zeroThreshold, interp, interpd, tmpZeros
     },
 
+    solution = Part[nodeSolution, 1];
+    domain = Part[nodeSolution, 2];
+
     (* refine the domain use triangle inequalities *)
     refinedDomain = t`$rd = IntervalIntersection[
-        Domain[node["TargetCayley"]],
+        domain[node["TargetCayley"]],
         refineInterval[node, node["TargetCayley"],
             (* we require the target cayley parameter not appears in its prior vertices' solutions *)
-            (#[freeSample]&) /@ KeySelect[Solution, (# < node["TargetCayley"]&)]
+            (#[freeSample]&) /@ KeySelect[solution, (# < node["TargetCayley"]&)]
         ]
     ];
     If[Head[refinedDomain] =!= Interval, Echo[t`rd]];
@@ -1043,7 +1055,7 @@ scanSamples[node_DRNode, NodeSolution[Solution_Association, Domain_Association]]
 
     targetSamples = getSamples[refinedDomain];
     sampleList = (Replace[targetSample:Except[_Missing] :> (
-        dropDiff[node, Solution, Append[freeSample, <|node["TargetCayley"] -> targetSample|>]]
+        dropDiff[node, solution, Append[freeSample, <|node["TargetCayley"] -> targetSample|>]]
         // Replace[{
             $Failed :> ((*Echo[targetSample]; AbortNow = True;*) Missing["NoSolution"]),
             diff_?NumericQ :> Pair[targetSample, diff],
@@ -1058,7 +1070,7 @@ scanSamples[node_DRNode, NodeSolution[Solution_Association, Domain_Association]]
     targetRefinedSamples = getDenseSamples[targetSamples, approxIntervals];
     
     refinedSampleList = (Replace[targetSample:Except[_Missing] :> (
-        dropDiff[node, Solution, Append[freeSample, <|node["TargetCayley"] -> targetSample|>]]
+        dropDiff[node, solution, Append[freeSample, <|node["TargetCayley"] -> targetSample|>]]
         // Replace[{
             $Failed :> Missing["NoSolution"],
             diff_?NumericQ :> Pair[targetSample, diff],
@@ -1334,11 +1346,14 @@ getBoundaryApproxZeros[sampleList_SparseArray, zeroIntervals:{__}] := Module[
 ]
 
 
-interpZeros[node_DRNode, NodeSolution[Solution_Association, Domain_Association]][samples_, sampleList:{(_?NumericQ|_Missing)..}] := Module[
+interpZeros[node_DRNode, nodeSolution_NodeSolution, samples_, sampleList:{(_?NumericQ|_Missing)..}, index_Integer] := Module[
     {
-        interpList, zeroFunc, targetRule, newSolution, newDomain
+        solution, dflip, interpList, zeroFunc, targetRule,
+        newSolution, newDomain, newDFlip
     },
 
+    solution = Part[nodeSolution, 1];
+    dflip =  Part[nodeSolution, 3];
     zeroFunc = If[Length[node["FreeCayley"]] > 0,
     (* Ci vs C1 *)
         interpList = DeleteMissing[Transpose[{samples, sampleList}], 1, 1];
@@ -1358,10 +1373,11 @@ interpZeros[node_DRNode, NodeSolution[Solution_Association, Domain_Association]]
         @* (Curry[Through[#1[#2]]&, 2][Lookup /@ node["FreeCayley"]]))
     );
 
-    newSolution = (Solution /. targetRule);
+    newSolution = (solution /. targetRule);
     newDomain = AssociationThread[node["FreeCayley"], Interval /@ zeroFunc["Domain"]];
-    NodeSolution[newSolution, newDomain]
-];
+    newDFlip = ReplacePart[dflip, 1 -> index];
+    NodeSolution[newSolution, newDomain, newDFlip]
+]
 
 
 (* ::Section:: *)
