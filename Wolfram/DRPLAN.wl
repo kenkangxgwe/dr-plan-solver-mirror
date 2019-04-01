@@ -15,12 +15,14 @@ ClearAll[Evaluate[Context[] <> "*"]];
 Displacement::usage = "Displacement[node_DRNode, node_DRNode] combines two realizations for the same linkage and draw displancement vectors."
 RigidityMatrix::usage = "RigidityMatrix[graph_Graph] returns the rigidity matrix."
 InfinitesimallyRigidQ::usage = "InfinitismallyRigidQ[graph_Graph] gives True if the input DRNode is infinitesimally rigid ."
-DRNode::usage = "DRNode[\"property\"] returns the specified property of given DRNode."
+DRNode::usage = "DRNode[$n][\"property\"] returns the specified property of given DRNode[$n]."
 NewDRNode::usage = "NewDRNode[dotfile_String] returns the root node of a DR-Plan tree, according to the specified dotfile path."
 GenerateDRPlan::usage = "GenerateDRPlan[node_DRNode] constructs the DR-Plan for given root node."
 FlipAt::usage = "FlipAt[node_DRNode, vertices_List] flips given vertices in the list for given root node."
 PrintDRPlan::usage = "PrintDRPlan[node_DRNode] prints the freeCayley parameters at each node."
 SolveDRPlan::usage = "SolveDRPlan[node_DRNode] solves a DRPlan by passing in the root DR-node."
+SolveNode::usage = "SolveNode[node_DRNode] solves the input node and its sub-nodes and returns all solutions.
+SolveNode[node_DRNode, dFlip:(All | _List)] solves the node only for specified D-flip."
 AnalyzeSolution::usage = "AnalyzeSolution[node_DRNode, cayleyLength_Association] gives the result graph and errors of each non-partial edge."
 
 
@@ -718,7 +720,7 @@ calcCoordsImpl[node_DRNode, CayleyLength_Association][{{curVertex_Integer, restV
 (*Solving*)
 
 
-SolveDRPlan[node_DRNode, targets_List:{}] := getNodeValue /@ SolveNode[node, targets];
+SolveDRPlan[node_DRNode, dFlip:All] := getNodeValue /@ SolveNode[node, dFlip];
 
 getNodeValue[nodeSolution_NodeSolution] := Module[
     {
@@ -728,23 +730,30 @@ getNodeValue[nodeSolution_NodeSolution] := Module[
     (#[{}]&) /@ solution
 ]
 
-SolveNode::invtgt = "Invalid targest tuple: `1`"
 Options[SolveNode] = {
-    "UseCache" -> True
+    (* False to use cached *)
+    (* True to re-evaluate current node *)
+    (* All to re-evaluate current and all sub- nodes *)
+    "Reevaluate" -> False
 }
-SolveNode[node_DRNode, targets_:{}, o:OptionsPattern[]] := Module[
+
+SolveNode::invtdf = "Invalid D-flip specified: `1`."
+SolveNode[node_DRNode, o:OptionsPattern[]] := SolveNode[node, All, o]
+(*
+    Caveat: If you specified the D-flip, be careful with the total number of D-flips
+    For example, let's say there are solutions in {1, {1}, {1}} and {2, {2}, {1}} when no D-flips are specified.
+    If you now specified D-flip to be {2, {2}, {1}}, it will be wrong,
+    because there is only one D-flip for {x, {2}, {1}}.
+    In this case, use {1, {2}, {1}} instead.
+*)
+SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
     {
-      nodeSolutions, curTarget, restTargets,
-      (* options *)
-      useCache
+        nodeSolutions, curDFlip, subDFlips,
+        (* options *)
+        reevaluate, subReevaluate
     },
 
-    {useCache} = OptionValue[SolveNode, {o}, {"UseCache"}];
-
-    (* Memoization *)
-    If[useCache && !MissingQ[node["Solutions"]],
-        Return[node["Solutions"]]
-    ];
+    {reevaluate} = OptionValue[SolveNode, {o}, {"Reevaluate"}];
 
     (* Print["Solving " <> ToString[node]]; *)
     If[node["IsCayleyNode"],
@@ -755,16 +764,26 @@ SolveNode[node_DRNode, targets_:{}, o:OptionsPattern[]] := Module[
             {1} (* D-flip index *)
         ]},
 
-        {curTarget, restTargets} = Replace[targets, {
-            {} | All :> {All, Table[{}, Length[node["SubNodes"]]]},
-            {cur_} :> {cur, Table[{}, Length[node["SubNodes"]]]},
-            {cur_, subs_List} :> {cur, PadRight[subs, Length[node["SubNodes"]], {{}}]},
-            _ :> (Message[SolveNode::invtgt, targets]; Abort[])
+        (* Memoization *)
+        If[reevaluate === False && !MissingQ[node["Solutions"]],
+            Return[node["Solutions"]]
+        ];
+
+        subReevaluate = If[reevaluate === All, All, False]; (* Unless All, do not re-evaluate the sub-nodes *)
+
+        {curDFlip, subDFlips} = Replace[dFlip, {
+            (* solve for all D-flips *)
+            All :> {All, Table[All, Length[node["SubNodes"]]]},
+            (* solve for the specified D-flips for current node, based on specifed sub-D-flips *)
+            (* if not enough sub-D-flips are specified, the remainings will based on all sub-D-flips *)
+            {cur_, subs:(All|_List)...} :> {{cur}, PadRight[{subs}, Length[node["SubNodes"]], All]},
+            (* otherwise, invalid D-flips specifed *)
+            _ :> (Message[SolveNode::invdf, targets]; Abort[])
         }];
 
-        nodeSolutions = mergeNodeSolution @@ MapThread[SolveNode[#1, #2, "UseCache" -> useCache]&, {node["SubNodes"], restTargets}];
+        nodeSolutions = mergeNodeSolution @@ MapThread[SolveNode[#1, #2, "Reevaluate" -> subReevaluate]&, {node["SubNodes"], subDFlips}];
         (* Memoization *)
-        node["Solutions"] = Part[Flatten @ (Curry[SolveDFlip, 2][node] /@ nodeSolutions), curTarget];
+        node["Solutions"] = Part[Flatten @ (Curry[SolveDFlip, 2][node] /@ nodeSolutions), curDFlip];
         Echo[#, "nodeSolutions"]& @ node["Solutions"]
     ]
 ]
