@@ -1183,6 +1183,37 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution][freeSample_Association] := M
 ]
 
 
+AlternativeInterpolation[list_List] := Module[
+    {
+        first, last, midOdd, midEven, interpOdd, InterpEven
+    },
+
+    first = First[list];
+    last = Last[list];
+    {midOdd, midEven} = Part[GatherBy[Partition[Riffle[Most[Rest[list]], {"Odd", "Even"}], 2], Last], All, All, 1];
+
+    interpOdd = Interpolation[Join[{first}, midOdd, {last}], InterpolationOrder -> 3, Method -> "Hermite"];
+    interpEven = Interpolation[Join[{first}, midEven, {last}], InterpolationOrder -> 3, Method -> "Hermite"];
+
+    InterpolatingFunctionGroup[{interpOdd, interpEven}]
+
+]
+
+
+(* AveragingInterpolations[ifs:{__InterpolatingFunction}] := Interpretation[
+    Row[{"InterpolatingFunctionGroup", "[", Panel[Row[{Nothing, Column[ifs]}]], "]"}],
+    InterpolatingFunctionGroup[ifs]
+] *)
+InterpolatingFunctionGroup[ifs:{__InterpolatingFunction}][x:(_?NumericQ | {__?NumericQ})] := Mean[Through[ifs[x]]]
+InterpolatingFunctionGroup[ifs:{__InterpolatingFunction}]["Domain"] := First[ifs]["Domain"]
+
+
+(* Format[ifg:InterpolatingFunctionGroup[ifs:{__InterpolatingFunction}]] := Interpretation[
+    InterpolatingFunctionGroup[Panel[Row[{Nothing, Column[ifs]}]]],
+    ifg
+] *)
+
+
 findApproxIntervals[samplePoints_SparseArray, threshold_?NumericQ] := Module[
     {
         booleanList, seqPos
@@ -1402,7 +1433,9 @@ interpZeros[node_DRNode, nodeSolution_NodeSolution, samples_, sampleList:{(_?Num
             (* not enough samples *)
                 Return[{}]
             ];
-        Interpolation[interpList],
+        AlternativeInterpolation[interpList],
+        (* Interpolation[interpList, InterpolationOrder -> 3, Method -> "Hermite"], *)
+        (* Interpolation[interpList, InterpolationOrder -> 3, Method -> "Spline"], *)
     (* the last Cayley C1 *)
         Function[{const}, (const &)] @@ sampleList
     ];
