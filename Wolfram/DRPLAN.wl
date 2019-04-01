@@ -145,6 +145,9 @@ PrintEcho = ((Print[#1];#1)&);
 (*Constructor*)
 
 
+$NodeID = 0 (* A global id for node *)
+NodeIDGetNew[] := Symbol["$" <> ToString[($NodeID = $NodeID + 1)]]
+
 (* Constructs a new DRNode *)
 Options[NewDRNode] = {
     "ImportRealization" -> True
@@ -153,7 +156,7 @@ NewDRNode[dotfile_String, o:OptionsPattern[]] := NewDRNode[ImportGraphviz[dotfil
 
 NewDRNode[graph:(_Graph | _Subgraph)] := Module[
     {
-        newNode = DRNode[Unique[]]
+        newNode = DRNode[NodeIDGetNew[]]
     },
 
     newNode["FreeCayley"] = {};
