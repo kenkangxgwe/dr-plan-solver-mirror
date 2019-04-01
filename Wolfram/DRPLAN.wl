@@ -12,15 +12,16 @@ ClearAll[Evaluate[Context[] <> "*"]];
 (*Output Symbols*)
 
 
-Displacement::usage = "Displacement[node_DRNode, node_DRNode] combines two realizations for the same linkage and draw displancement vectors.";
-RigidityMatrix::usage = "RigidityMatrix[graph_Graph] returns the rigidity matrix.";
-InfinitesimallyRigidQ::usage = "InfinitismallyRigidQ[graph_Graph] gives True if the input DRNode is infinitesimally rigid .";
-DRNode::usage = "DRNode[\"property\"] returns the specified property of given DRNode.";
-NewDRNode::usage = "NewDRNode[dotfile_String] returns the root node of a DR-Plan tree, according to the specified dotfile path.";
+Displacement::usage = "Displacement[node_DRNode, node_DRNode] combines two realizations for the same linkage and draw displancement vectors."
+RigidityMatrix::usage = "RigidityMatrix[graph_Graph] returns the rigidity matrix."
+InfinitesimallyRigidQ::usage = "InfinitismallyRigidQ[graph_Graph] gives True if the input DRNode is infinitesimally rigid ."
+DRNode::usage = "DRNode[\"property\"] returns the specified property of given DRNode."
+NewDRNode::usage = "NewDRNode[dotfile_String] returns the root node of a DR-Plan tree, according to the specified dotfile path."
 GenerateDRPlan::usage = "GenerateDRPlan[node_DRNode] constructs the DR-Plan for given root node."
 FlipAt::usage = "FlipAt[node_DRNode, vertices_List] flips given vertices in the list for given root node."
-PrintDRPlan::usage = "PrintDRPlan[node_DRNode] prints the freeCayley parameters at each node.";
+PrintDRPlan::usage = "PrintDRPlan[node_DRNode] prints the freeCayley parameters at each node."
 SolveDRPlan::usage = "SolveDRPlan[node_DRNode] solves a DRPlan by passing in the root DR-node."
+AnalyzeSolution::usage = "AnalyzeSolution[node_DRNode, cayleyLength_Association] gives the result graph and errors of each non-partial edge."
 
 
 Begin["`Private`"];
@@ -535,14 +536,17 @@ HighlightNode[node_DRNode] := Module[
 ];
 
 
-Format[nodeSolution:NodeSolution[solution_Association, domain_Association, dFlip_List]] := Interpretation[NodeSolution[Panel[Column[{
-	"Solution:",
-	Panel[Column @ Normal @ solution],
-	"Domain:",
-	Panel[Column @ Normal @ domain],
-    "DFlip:",
-	Panel[dFlip]
-}]]], nodeSolution];
+Format[nodeSolution:NodeSolution[solution_Association, domain_Association, dFlip_List]] := Interpretation[
+    NodeSolution[Panel[Column[{
+        "Solution:",
+        Panel[Column @ Normal @ solution],
+        "Domain:",
+        Panel[Column @ Normal @ domain],
+        "DFlip:",
+        Panel[dFlip]
+    }]]],
+    nodeSolution
+];
 
 
 ToString[NodeSolution[solution_Association, domain_Association, dFlip_List]] ^:= StringJoin[
@@ -868,6 +872,40 @@ AnalyzeNode[node_DRNode, nodeSolution_NodeSolution] := Module[
         ]
     ]
 ];
+
+
+AnalyzeSolution[node_DRNode, cayleyLength_Association] := Module[
+    {
+        originGraph, resultGraph
+    },
+
+    originGraph = node["Root"]["Graph"];
+    resultGraph = node["Root"]["Realize"[cayleyLength]];
+    Row @ {
+        Graph[resultGraph, Options[originGraph, EdgeStyle], ImageSize -> 400],
+        Grid[({
+            #1 \[UndirectedEdge] #2,
+            PropertyValue[{originGraph, #1 \[UndirectedEdge] #2}, EdgeStyle],
+            Chop[EuclideanDistance[
+                PropertyValue[{resultGraph, #1}, VertexCoordinates], 
+                PropertyValue[{resultGraph, #2}, VertexCoordinates]
+            ] - EuclideanDistance[
+                PropertyValue[{originGraph, #1}, VertexCoordinates], 
+                PropertyValue[{originGraph, #2}, VertexCoordinates]
+            ]],
+            Row @ {(Chop[EuclideanDistance[
+                PropertyValue[{resultGraph, #1}, VertexCoordinates], 
+                PropertyValue[{resultGraph, #2}, VertexCoordinates]
+            ] / EuclideanDistance[
+                PropertyValue[{originGraph, #1}, VertexCoordinates], 
+                PropertyValue[{originGraph, #2}, VertexCoordinates]
+            ]] - 1) * 100,
+            "%"
+            }
+        } &) @@@ Select[EdgeList[originGraph], PropertyValue[{originGraph, #}, "EdgeType"] =!= "Partial"&]
+        , Alignment -> {{"\[UndirectedEdge]", Center, ".", "."}, Baseline}]
+    }
+]
 
 
 (* ::Subsection:: *)
