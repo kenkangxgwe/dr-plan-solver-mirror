@@ -740,11 +740,9 @@ Options[SolveNode] = {
 SolveNode::invtdf = "Invalid D-flip specified: `1`."
 SolveNode[node_DRNode, o:OptionsPattern[]] := SolveNode[node, All, o]
 (*
-    Caveat: If you specified the D-flip, be careful with the total number of D-flips
-    For example, let's say there are solutions in {1, {1}, {1}} and {2, {2}, {1}} when no D-flips are specified.
-    If you now specified D-flip to be {2, {2}, {1}}, it will be wrong,
-    because there is only one D-flip for {x, {2}, {1}}.
-    In this case, use {1, {2}, {1}} instead.
+    Caveat: If you specified the D-flip, be careful that the index running among all the D-flips.
+    For example, let's say there are solutions in D-flip {1, {1}, {1}} and {1, {2}, {1}}.
+    If you now specified D-flip to be {2, All, All}, it will return {1, {2}, {1}} because it is the second D-flip of the two above.
 *)
 SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
     {
