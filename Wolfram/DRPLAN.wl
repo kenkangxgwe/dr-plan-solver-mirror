@@ -720,7 +720,7 @@ calcCoordsImpl[node_DRNode, CayleyLength_Association][{{curVertex_Integer, restV
 (*Solving*)
 
 
-SolveDRPlan[node_DRNode, dFlip:All] := getNodeValue /@ SolveNode[node, dFlip];
+SolveDRPlan[node_DRNode, dFlip_:All] := getNodeValue /@ SolveNode[node, dFlip];
 
 getNodeValue[nodeSolution_NodeSolution] := Module[
     {
@@ -789,7 +789,7 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
 ]
 
 
-mergeNodeSolution[nodeSolutions:PatternSequence[{__NodeSolution}..]] := 
+mergeNodeSolution[nodeSolutions:PatternSequence[{___NodeSolution}..]] := 
     Outer[mergeNodeSolution, nodeSolutions] // Flatten
 
 mergeNodeSolution[nodeSolutions__NodeSolution] := With[
