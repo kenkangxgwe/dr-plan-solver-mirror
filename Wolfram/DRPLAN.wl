@@ -24,11 +24,15 @@ SolveDRPlan::usage = "SolveDRPlan[node_DRNode] solves a DRPlan by passing in the
 SolveNode::usage = "SolveNode[node_DRNode] solves the input node and its sub-nodes and returns all solutions.
 SolveNode[node_DRNode, dFlip:(All | _List)] solves the node only for specified D-flip."
 AnalyzeSolution::usage = "AnalyzeSolution[node_DRNode, cayleyLength_Association] gives the result graph and errors of each non-partial edge."
+SolveAllOffsetsStart::usage = "SolveAllOffsetsStart[root_DRNode, offset] starts a time-consuming search for different dropped edge offsets \
+and pause until it found one solution."
+SolveAllOffsetsContinue::usage = 
 
 
 Begin["`Private`"];
 ClearAll[Evaluate[Context[] <> "*"]];
 Needs["GraphvizUtils`"];
+Needs["Parallel`Queue`Priority`"];
 
 
 (* ::Section:: *)
@@ -163,9 +167,11 @@ NewDRNode[graph:(_Graph | _Subgraph)] := Module[
 
     newNode["FreeCayley"] = {};
     newNode["SubNodes"] = {};
+    newNode["Parents"] = {};
     newNode["Graph"] = graph;
     newNode["Root"] = newNode;
-    newNode["Solutions"] = Missing["NotSolved"];
+    newNode["Solutions"] = Missing["NotSolved"]; (* For memoization, should be constant once assign a Non-Missing value. *)
+    newNode["OffsetSolutions"] = {}; (* Value gets updated from time to time. *)
     newNode
 ];
 
@@ -932,6 +938,214 @@ AnalyzeSolution[node_DRNode, cayleyLength_Association] := Module[
 
 
 (* ::Subsection:: *)
+(*solve offsets*)
+
+
+(* implement comparison operators for offset priority value *)
+
+OffsetPV /: Greater[OffsetPV[p11_, p12_, p13_], OffsetPV[p21_, p22_, p23_]] :=
+    If[p11 == p21,
+        If[p12 == p22,
+            p13 > p23,
+            p12 > p22
+        ],
+        p11 > p21
+    ]
+
+OffsetPV /: GreaterEqual[OffsetPV[p11_, p12_, p13_], OffsetPV[p21_, p22_, p23_]] :=
+    If[p11 == p21,
+        If[p12 == p22,
+            p13 >= p23, (* differs from above *)
+            p12 > p22
+        ],
+        p11 > p21
+    ]
+
+
+(* the priority function *)
+OffsetSolution /: Priority[offsetSolution_OffsetSolution] := Module[
+    {
+        dFlips, offsetsNum, diverseHeight, totalHeight
+    },
+
+    dFlips = Part[offsetSolution, (*NodeSolutions*) 1, All, (*D-Flips*) 3];
+    offsetsNum = Part[offsetSolution, (*Offsets*) 2] // Length;
+    diverseHeight = ChainDiverseLevel[dFlips];
+    totalHeight = Depth[First[dFlips]];
+
+    (* Pre priority: The less whose dropped edges offsetted, the higher priority it has *)
+    (* Main priority: the earlier whose D-Flips diverse, the higher priority it has *)
+    (* Tie breaker: the longer whose D-Flips are, the higher priority it has *)
+    OffsetPV[offsetsNum, -diverseHeight, totalHeight]
+
+]
+
+
+(*
+    The function finds the earliest level where at least two of the D-Flips differ from each other
+    It only works for DR-Chain, i.e., the DR-Plan is a chain ignoring all Cayley nodes.
+*)
+ChainDiverseLevel[dFlips_List] := ChainDiverseLevelImpl[dFlips, 0]
+ChainDiverseLevelImpl[{}, height_Integer] := height
+ChainDiverseLevelImpl[dFlips_List, height_Integer] := ChainDiverseLevelImpl[
+    If[Length[First[dFlips]] == 1,
+        (* reaches the leave, terminate recursion *)
+        {},
+        (*
+            Recursively look for its left child.
+            In this case, make sure that the right child is always a Cayley node.
+        *)
+        Part[dFlips, All, 2]
+    ],
+    If[Equal @@ Part[dFlips, All, 1],
+        (*
+            The D-Flips are same at this level,
+            increase the height
+        *)
+        height + 1,
+        (*
+            At least two of them are different,
+            reset the height
+        *)
+        0
+    ]
+]
+
+
+SolveAllOffsetsContinue::nstart = "The solving for `1` has not start yet, please call SolveAllOffsetsStart[`1`, offsets]."
+SolveAllOffsetsContinue[node_DRNode] := Message[SolveAllOffsetsContinue::nstart, node] 
+(* Solve all offsets *)
+SolveAllOffsetsStart[root_DRNode, offsets:{__?NumericQ}] := Module[
+    {
+        offsetPQ
+    },
+
+    offsetPQ = priorityQueue[];
+    SolveAllLeaves[offsetPQ, root];
+
+    SolveAllOffsetsContinue[root] := (
+        While[!SolveOneOffset[offsetPQ, DeQueue[offsetPQ], offsets],
+            Echo[Size[offsetPQ], "Current Queue Size"]
+        ];
+        root["OffsetSolutions"]
+    );
+
+    SolveAllOffsetsContinue[root]
+]
+
+
+SolveAllLeaves[offsetPQ_, node_DRNode] := Module[
+    {
+
+    },
+
+    If[node["IsCayleyNode"],
+        node["OffsetSolutions"] = {OffsetSolution[
+            {NodeSolution[
+                <|node["TargetCayley"] -> (First @* (Curry[Through[#1[#2]]&, 2][Lookup /@ node["FreeCayley"]]))|>, (* identity function *)
+                <|node["TargetCayley"] -> node["Interval"]|>, (* domain *)
+                {1} (* D-flip index *)
+            ]}, (* One DFlip *)
+            <||>, (* No Offsets *)
+            node (* corresponding node *)
+        ]};
+
+        (* tell its parents that a new offset solution is born *)
+        notifyParents[offsetPQ, node],
+
+        Table[
+            subNode["Parents"] = Union[subNode["Parents"], {node}];
+            SolveAllLeaves[offsetPQ, subNode],
+            {subNode, node["SubNodes"]}
+        ];
+    ]
+
+]
+
+
+SolveOneOffset[
+    offsetPQ_,
+    OffsetSolution[
+        nodeSolutions:{__NodeSolution},
+        dropOffsets_Association,
+        node_DRNode
+    ],
+    offsets:{__?NumericQ}
+] := Module[
+    {
+        newDropOffsets, oldOffsetSolutions
+    },
+
+    oldOffsetSolutions = node["OffsetSolutions"];
+    node["OffsetSolutions"] = Echo[#, "nodeSolutions"]& @ Table[
+        newDropOffsets = If[dropOffset == 1,
+            dropOffsets,
+            Append[dropOffsets, node["TargetDrop"] -> dropOffset]
+        ];
+        Table[
+            SolveDFlip[node, nodeSolution, dropOffset],
+            {nodeSolution, nodeSolutions}
+        ] // Flatten // Replace[{
+            {} :> Nothing,
+            ns:{__NodeSolution} :> OffsetSolution[ns, newDropOffsets, node],
+            err_ :> Throw[{"Unknown Result", err}]
+        }],
+
+        {dropOffset, offsets}
+    ];
+
+    notifyParents[offsetPQ, node];
+    node["OffsetSolutions"] = Join[oldOffsetSolutions, node["OffsetSolutions"]];
+    node["Root"] === node
+
+]
+
+
+notifyParents[offsetPQ_, node_DRNode] :=
+If[node["Root"] === node,
+    (* root is solved *)
+    Table[
+        Replace[offsetSolution,
+            OffsetSolution[nodeSolutions:{__NodeSolution}, offsets_Association, _DRNode] :> 
+                OffsetSolution[getNodeValue /@ nodeSolutions, offsets, node]
+        ],
+        {offsetSolution, node["OffsetSolutions"]}
+    ],
+
+    (* add to the priority queue*)
+    Fold[EnQueue, offsetPQ, 
+        Table[Outer[
+            mergeOffsetSolution[parent, ##]&,
+            Sequence @@ Through[parent["SubNodes"]["OffsetSolutions"]]
+            ], {parent, node["Parents"]}
+        ] // Flatten
+    ]
+]
+
+
+mergeOffsetSolution::difofst = "Different offset are specified for the same dropped edge."
+(* mergeOffsetSolution[node_DRNode, offsetSolutions:PatternSequence[{___OffsetSolution}..]] := 
+    Outer[mergeOffsetSolution, offsetSolutions] *)
+mergeOffsetSolution[node_DRNode, offsetSolutions__OffsetSolution] := Module[
+    {
+        offsetSolutionList
+    },
+
+    offsetSolutionList = List @@@ {offsetSolutions};
+
+    OffsetSolution[
+        mergeNodeSolution @@ Part[offsetSolutionList, All, 1],
+        Part[offsetSolutionList, All, 2]
+        // Merge[If[SameQ@@#, First[#], Message[mergeOffsetSolution::difofst]; Abort[]]&],
+        node
+    ]
+
+]
+
+
+
+
+(* ::Subsection:: *)
 (*solve node*)
 
 
@@ -956,17 +1170,20 @@ dropDiff[node_DRNode, graph_Graph] := Module[
     ] - dropLength[node]
 ]
 
-dropDiff[node_DRNode, Solution_Association, sample_Association] := Module[
+dropDiff[node_DRNode, Solution_Association, sample_Association, dropOffset:_?NumericQ:1] := Module[
     {
         rootgraph = node["Root"]["Graph"], coordsList, dropEdge, CayleyLength
-	  },
+    },
 
     CayleyLength = ((#[sample]&) /@ Solution);
     Check[
         coordsList = calcCoords[node, VertexList[node["Graph"]], CayleyLength];
         (* coordsList = node["CalcCoords"[VertexList[node["Graph"]], CayleyLength]]; *)
         dropEdge = Part[EdgeList[rootgraph], node["TargetDrop"]];
-        EuclideanDistance[coordsList[First[dropEdge]], coordsList[Last[dropEdge]]] - dropLength[node],
+        EuclideanDistance[
+            coordsList[First[dropEdge]],
+            coordsList[Last[dropEdge]]
+        ] - dropLength[node] * dropOffset,
         $Failed
     ]
 ]
@@ -1017,7 +1234,7 @@ SolveDFlip::dupz = "`1` zeros are found.";
 SolveDFlip::noz = "no zeros are found.";
 SolveDFlip::nosolplan = "no solution for the dr-plan.";
 (* This function solves the given dropped flip. *)
-SolveDFlip[node_DRNode, nodeSolution_NodeSolution] := Module[
+SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := Module[
     {
         domain, freeSamples, interpolant,
         incList, decList, time, firstSamples, firstResults,
@@ -1050,9 +1267,9 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution] := Module[
     (* If[$on, Echo[firstSamples]]; *)
     (* Echo[node["FreeCayley"]]; *)
     firstResults = If[node["FreeCayley"] === {},
-        {Tuple[scanSamples[node, nodeSolution][<||>]]},
+        {Tuple[scanSamples[node, nodeSolution, dropOffset][<||>]]},
         (Replace[freeSample:Except[_Missing] :> (
-            Tuple[scanSamples[node, nodeSolution][<|First[node["FreeCayley"]] -> freeSample|>]]
+            Tuple[scanSamples[node, nodeSolution, dropOffset][<|First[node["FreeCayley"]] -> freeSample|>]]
         )] /@ firstSamples)
     ];
     If[$on, Echo[firstResults]];
@@ -1067,7 +1284,7 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution] := Module[
 
         $on = True;
         refinedResults = (Replace[freeSample:Except[_Missing] :> (
-            Tuple[scanSamples[node, nodeSolution][<|First[node["FreeCayley"]] -> freeSample|>]]
+            Tuple[scanSamples[node, nodeSolution, dropOffset][<|First[node["FreeCayley"]] -> freeSample|>]]
         )] /@ refinedFreeSamples);
 
         finalSamples = Echo@SparseArray[
@@ -1093,7 +1310,7 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution] := Module[
 ]
 
 
-scanSamples[node_DRNode, nodeSolution_NodeSolution][freeSample_Association] := Module[
+scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][freeSample_Association] := Module[
     {
         solution, domain,
         refinedDomain, targetSamples, sampleList, approxIntervals, targetRefinedSamples, refinedSampleList,
@@ -1116,7 +1333,9 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution][freeSample_Association] := M
 
     targetSamples = getSamples[refinedDomain];
     sampleList = (Replace[targetSample:Except[_Missing] :> (
-        dropDiff[node, solution, Append[freeSample, <|node["TargetCayley"] -> targetSample|>]]
+        dropDiff[node, solution,
+            Append[freeSample, <|node["TargetCayley"] -> targetSample|>],
+        dropOffset]
         // Replace[{
             $Failed :> ((*Echo[targetSample]; AbortNow = True;*) Missing["NoSolution"]),
             diff_?NumericQ :> Pair[targetSample, diff],
@@ -1131,7 +1350,9 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution][freeSample_Association] := M
     targetRefinedSamples = getDenseSamples[targetSamples, approxIntervals];
     
     refinedSampleList = (Replace[targetSample:Except[_Missing] :> (
-        dropDiff[node, solution, Append[freeSample, <|node["TargetCayley"] -> targetSample|>]]
+        dropDiff[node, solution,
+            Append[freeSample, <|node["TargetCayley"] -> targetSample|>],
+        dropOffset]
         // Replace[{
             $Failed :> Missing["NoSolution"],
             diff_?NumericQ :> Pair[targetSample, diff],
