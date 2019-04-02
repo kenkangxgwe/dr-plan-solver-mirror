@@ -781,7 +781,10 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
 
         nodeSolutions = mergeNodeSolution @@ MapThread[SolveNode[#1, #2, "Reevaluate" -> subReevaluate]&, {node["SubNodes"], subDFlips}];
         (* Memoization *)
-        node["Solutions"] = Part[Flatten @ (Curry[SolveDFlip, 2][node] /@ nodeSolutions), curDFlip];
+        node["Solutions"] = Part[Table[
+            SolveDFlip[node, nodeSolution],
+            {nodeSolution, nodeSolutions}
+        ] // Flatten, curDFlip];
         Echo[#, "nodeSolutions"]& @ node["Solutions"]
     ]
 ]
