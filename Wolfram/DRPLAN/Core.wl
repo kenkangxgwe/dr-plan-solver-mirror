@@ -1,11 +1,29 @@
 (* ::Package:: *)
 
+(*
+  This file is part of DRPLAN.
+ 
+  DRPLAN is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+ 
+  DRPLAN is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+  GNU General Public License for more details.
+ 
+  You should have received a copy of the GNU General Public License
+  along with this program. If not, see <http://www.gnu.org/licenses/>.
+*)
+
+
 (* ::Title:: *)
 (*DRPLAN*)
 
 
-BeginPackage["DRPLAN`"];
-ClearAll[Evaluate[Context[] <> "*"]];
+BeginPackage["DRPLAN`Core`"]
+ClearAll[Evaluate[Context[] <> "*"]]
 
 
 (* ::Item:: *)
@@ -18,9 +36,9 @@ GenerateDRPlan::usage = "GenerateDRPlan[node_DRNode] constructs the DR-Plan for 
 FlipAt::usage = "FlipAt[node_DRNode, vertices_List] flips given vertices in the list for given root node."
 
 
-Begin["`Private`"];
-ClearAll[Evaluate[Context[] <> "*"]];
-Needs["GraphvizUtils`"];
+Begin["`Private`"]
+ClearAll[Evaluate[Context[] <> "*"]]
+Needs["GraphvizUtils`"]
 
 
 (* ::Chapter:: *)
@@ -32,11 +50,10 @@ Needs["GraphvizUtils`"];
 
 
 (* Some constants are declared here. *)
-DRPLAN["EPSILON"] = 2 * 10^(-5);
-DRPLAN["DRNodeVSFunc"][{xc_, yc_}, name_, {w_, h_}] := name["Graph"];
-DRPLAN["CCW"[p_List, q_List, r__List]] := Det[Append[#, 1] & /@ {p, q, r}];
-UnEcho = (#1&);
-PrintEcho = ((Print[#1];#1)&);
+DRPLAN["EPSILON"] = 2 * 10^(-5)
+DRPLAN["DRNodeVSFunc"][{xc_, yc_}, name_, {w_, h_}] := name["Graph"]
+DRPLAN["CCW"[p_List, q_List, r__List]] := Det[Append[#, 1] & /@ {p, q, r}]
+PrintEcho = ((Print[#1];#1)&)
 
 
 (* ::Section:: *)
@@ -49,8 +66,8 @@ NodeIDGetNew[] := Symbol["$" <> ToString[($NodeID = $NodeID + 1)]]
 (* Constructs a new DRNode *)
 Options[NewDRNode] = {
     "ImportRealization" -> True
-};
-NewDRNode[dotfile_String, o:OptionsPattern[]] := NewDRNode[ImportGraphviz[dotfile, o]];
+}
+NewDRNode[dotfile_String, o:OptionsPattern[]] := NewDRNode[ImportGraphviz[dotfile, o]]
 
 NewDRNode[graph:(_Graph | _Subgraph)] := Module[
     {
@@ -65,7 +82,7 @@ NewDRNode[graph:(_Graph | _Subgraph)] := Module[
     newNode["Solutions"] = Missing["NotSolved"]; (* For memoization, should be constant once assign a Non-Missing value. *)
     newNode["OffsetSolutions"] = {}; (* Value gets updated from time to time. *)
     newNode
-];
+]
 
 
 (* ::Section:: *)
@@ -82,7 +99,7 @@ AddSubNode[node_DRNode, vertOrEdges:{(_Integer?NonNegative|_UndirectedEdge)..}] 
     newSubNode = NewDRNode[Subgraph[node["Graph"], vertOrEdges]];
     newSubNode["Root"] = node["Root"];
     newSubNode
-];
+]
 
 
 (* ::Section:: *)
@@ -98,7 +115,7 @@ FlipAt[node_DRNode, vertices_List] := Module[
     (PropertyValue[{graph, #}, "Flip"] = True)& /@ vertices;
     node["Graph"] = graph;
     node
-];
+]
 
 
 (* ::Section:: *)
@@ -139,7 +156,7 @@ GenerateDRPlan[node_DRNode] := Module[
         node["AllCayley"] = Union[freeCayley, Union @@ Through[node["SubNodes"]["AllCayley"]]]
     ];
     node["EdgeRules"] = ((node -> #&) /@ node["SubNodes"]) ~Join~ (Join @@ Through[node["SubNodes"]["EdgeRules"]]);
-];
+]
 
 
 (* ::Section:: *)
@@ -147,7 +164,7 @@ GenerateDRPlan[node_DRNode] := Module[
 
 
 (* Count down from the last edge to find a subnode. *)
-GenerateDRNode[node_DRNode] := GenerateDRNode[{node, EdgeCount[node["Graph"]], 0}, {{}, {}}];
+GenerateDRNode[node_DRNode] := GenerateDRNode[{node, EdgeCount[node["Graph"]], 0}, {{}, {}}]
 GenerateDRNode[{node_DRNode, edgeIndex_Integer?NonNegative, dropCounter_Integer?NonNegative}, {freeCayley:{_Integer?Positive...}, subNodes:{_DRNode...}}] := Module[
     {
         graph, rootgraph, curEdge, newSubNodes = subNodes, rootEdgeIndex
@@ -228,7 +245,7 @@ calcInterval[node_DRNode] := Module[
     (PropertyValue[{graph, EdgeList[graph][[#]]}, "Interval"] = Interval[{mins[edgeToCol[#]], maxs[edgeToCol[#]]}])& /@ Keys[edgeToCol];
 	  node["Graph"] =  graph;
 	  node
-];
+]
 
 
 (* ::Subsection:: *)
@@ -299,14 +316,10 @@ Switch[Table[PropertyValue[{graph, e}, "EdgeType"], {e, {e1, e2}}],
             PropertyValue[{graph, e1}, EdgeWeight] + PropertyValue[{graph, e2}, EdgeWeight]
         }]|>
     }
-];
+]
 
 
+End[]
 
 
-
-
-End[];
-
-
-EndPackage[];
+EndPackage[]

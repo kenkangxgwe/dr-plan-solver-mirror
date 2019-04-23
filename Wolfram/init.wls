@@ -1,14 +1,16 @@
 #!/usr/bin/env wolframscript
 (* ::Package:: *)
 
-AppendTo[$Path, DirectoryName[$InputFileName]];
+PrependTo[$Path, DirectoryName[$InputFileName]]
 
-SourceFiles = {
-	"GraphvizUtils.wl",
-	"DRPLAN.wl"
-};
+ImportContexts = {
+	"DRPLAN`Core`",
+	"DRPLAN`Solver`",
+	"DRPLAN`Visualizer`"
+}
 
-WriteString[$Output, "Initializing DRPLAN... "];
+WriteString[$Output, "Initializing DRPLAN... "]
 
-Get /@ SourceFiles;
-WriteString[$Output, "Done"];
+Get /@ ImportContexts
+
+WriteString[$Output, "Done"]

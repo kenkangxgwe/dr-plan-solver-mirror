@@ -1,5 +1,23 @@
 (* ::Package:: *)
 
+(*
+  This file is part of DRPLAN.
+ 
+  DRPLAN is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+ 
+  DRPLAN is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+  GNU General Public License for more details.
+ 
+  You should have received a copy of the GNU General Public License
+  along with this program. If not, see <http://www.gnu.org/licenses/>.
+*)
+
+
 BeginPackage["GraphvizUtils`"];
 ClearAll[Evaluate[Context[] <> "*"]];
 
@@ -24,6 +42,12 @@ ColorQ[HexColor[hex_String]] ^:= ColorQ[RGBColor[hex]]
 
 HexColor /: ColorConvert[HexColor[hex_String]?ColorQ, colorSpace_] := ColorConvert[RGBColor[hex], colorSpace]
 
+X11Color["Black"] = RGBColor["#000000"]
+X11Color["Gray"] = RGBColor["#C0C0C0"]
+X11Color["Red"] = RGBColor["#FF0000"]
+X11Color["Green"] = RGBColor["#00FF00"]
+X11Color["Pink"] = RGBColor["#FFC0CB"]
+
 
 Options[ImportGraphviz]= {
     "ImportRealization" -> True,
@@ -41,20 +65,30 @@ ImportGraphviz[dotfile_String, OptionsPattern[]] := Module[
 	coordMap = Thread[graphVertList -> (("Coordinates" /. #)& /@ Import[dotfile, "VertexAttributes"])];
     edgeWeight = (N[Norm[(First[#] /. coordMap) - (Last[#] /. coordMap)]])& /@ graphEdgeList;
     colorMap = If[TrueQ[OptionValue["ImportColor"]],
+		(* Convert to HexColor space to discretize the color value *)
 		(Fold[ColorConvert, Replace["Color", #], {HexColor, RGBColor}])&
 		/@ Import[dotfile, "EdgeAttributes"],
-		Table[Black, EdgeCount[graphEdgeList]]
-	];
+		Table[X11Color["Black"], EdgeCount[graphEdgeList]]
+	] // Replace[{
+		res:{__RGBColor} :> res,
+		err_ :> Throw[err]
+	}];
 	edgeStyle = MapThread[#1 -> #2&, {graphEdgeList, colorMap}];
 	edgeTypeMap = colorMap /. {
-		RGBColor["#000000"] | RGBColor["#C0C0C0"] -> "Partial",
-		RGBColor["#00FF00"] -> "Add",
-		RGBColor["#FF0000"] | RGBColor["#FFC0CB"] -> "Drop"
-	};
+		X11Color["Black"] | X11Color["Gray"] -> "Partial",
+		X11Color["Green"] -> "Add",
+		X11Color["Red"] | X11Color["Pink"] -> "Drop"
+	} // Replace[{
+		res:{("Partial" | "Add" | "Drop")..} :> res,
+		err_ :> Throw[err]
+	}];
 	boundaryMap = colorMap /. {
-		RGBColor["#000000"] | RGBColor["#00FF00"] | RGBColor["#FF0000"] -> False,
-		RGBColor["#C0C0C0"] | RGBColor["#FFC0CB"] -> True
-	};
+		X11Color["Black"] | X11Color["Green"] | X11Color["Red"] -> False,
+		X11Color["Gray"] | X11Color["Pink"] -> True
+	} // Replace[{
+		res:{__?BooleanQ} :> res,
+		err_ :> Throw[err]
+	}];
 	edgeCustomProps = MapThread[( #1 -> {"EdgeType" -> #2, "BoundaryQ" -> #3})&, {graphEdgeList, edgeTypeMap, boundaryMap}];
     vertexCustomProps = (# -> {"Flip" -> False})& /@ graphVertList;
     Graph[graphVertList, graphEdgeList, Properties -> vertexCustomProps ~ Join ~ edgeCustomProps,
@@ -78,25 +112,34 @@ Options[ExportGraphviz] := {
 	"ScaleRatio" -> 1.0
 };
 
-ExportGraphviz[graph_Graph, OptionsPattern[]] := Module[
+ExportGraphviz[graph_Graph, o:OptionsPattern[]] := Module[
 	{
-		vertexlist, edgelist, vertexcoords, vertexdot, edgedot, width, sr
+		vertexlist, edgelist, vertexcoords, vertexdot, edgedot, width, scaleRatio
 	},
 	
+	{scaleRatio} = OptionValue["ScaleRatio", {o}];
+
 	vertexlist = VertexList[graph];
-	vertexcoords = (VertexCoordinates/.Options[graph]);
-	width = Floor[Log10[Max[vertexlist]]+1];
-	sr = OptionValue["ScaleRatio"];
-	vertexdot = MapThread[("  "
-		<> StringPadLeft[ToString[#1], width, "0"] <> " [label=\"" <> StringPadLeft[ToString[#1], width, "0"]
-		<> "\", width=0, height=0; pos=\""
-		<> ToString[First@#2] <> "," <> ToString[Last@#2]
-		<> "!\"];\n"
-	)&, {vertexlist, ScalingTransform[{sr,sr}]@vertexcoords}];
+	vertexcoords = (VertexCoordinates /. Options[graph]);
+	width = Floor[Log10[Max[vertexlist]] + 1];
+	vertexdot = MapThread[StringJoin["  ",
+		StringPadLeft[ToString[#1], width, "0"],
+		" [label=\"",
+		StringPadLeft[ToString[#1], width, "0"],
+		"\", width=0, height=0; pos=\"",
+		ToString[First @ #2],
+		",",
+		ToString[Last @ #2],
+		"!\"];\n"
+	]&, {vertexlist, ScalingTransform[{scaleRatio, scaleRatio}] @ vertexcoords}];
+
 	edgelist = EdgeList[graph];
-	edgedot = ("  "
-		<> StringPadLeft[ToString[First@#1], width, "0"] <> "--" <> StringPadLeft[ToString[Last@#1], width, "0"]
-		<> " [color=\"black\", penwidth=1];\n")&/@edgelist;
+	edgedot = StringJoin["  ",
+		StringPadLeft[ToString[First @ #1], width, "0"],
+		"--",
+		StringPadLeft[ToString[Last @ #1], width, "0"],
+		" [color=\"black\", penwidth=1];\n"
+	]& /@ edgelist;
 	StringJoin["graph G {\n", vertexdot, "\n", edgedot, "}"]
 ];
 
