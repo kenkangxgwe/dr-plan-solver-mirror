@@ -14,6 +14,28 @@ proper subgraphs), and
 that achieves the edge distances.
 
 For output, it will search and return all the realization.
+
+
+<!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-refresh-toc -->
+**Table of Contents**
+
+- [Wolfram DR-Plan Package](#wolfram-dr-plan-package)
+    - [Introduction](#introduction)
+    - [Requirements](#requirements)
+    - [Usages](#usages)
+    - [Features](#features)
+        - [Refined Sampling](#refined-sampling)
+        - [Bead Threading](#bead-threading)
+        - [Alternative Interpolation](#alternative-interpolation)
+        - [Priority Search w/ Drop Offsets](#priority-search-w-drop-offsets)
+    - [Flip Generalization](#flip-generalization)
+    - [Results](#results)
+        - [Input DR-Plan](#input-dr-plan)
+        - [Output DR-Plan](#output-dr-plan)
+
+<!-- markdown-toc end -->
+
+
 ## Requirements
 
 - _Wolfram Mathematica_ (tested on 11.3)
@@ -117,9 +139,12 @@ interpolate them alternatively.
 The motivation is to find a graph with multiple solution by several small offsets of the dropped edges.
 For each time we solve the $c\_i^0$, we will simultaneously solve for $c\_i^(+5%)$ and $c\_i^(-5%)$.
 
-We want the priority function to be  
+We want the priority function to be
+
 - **Look different**: the earlier the D-Flips diverse, the higher priority it has.
+
 - **Solve quickly**: the longer whose D-Flips are, the higher priority it has.
+
 - **Less offsets**: the less number of  dropped edges changed, the higher priority it has.
 
 ## Flip Generalization
