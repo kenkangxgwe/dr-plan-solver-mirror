@@ -2,8 +2,8 @@
 
 ## Introduction
 
-This is a wolfram implementation of the DR-Plan Solver originally written in
-C++ (in the root folder) to provide better numerical precision and
+This is a Wolfram Language implementation of the DR-Plan Solver originally
+written in C++ (in the root folder) to provide better numerical precision and
 demonstrative plots for research interests.
 
 What it takes as input 
@@ -14,7 +14,6 @@ proper subgraphs), and
 that achieves the edge distances.
 
 For output, it will search and return all the realization.
-
 ## Requirements
 
 - _Wolfram Mathematica_ (tested on 11.3)
@@ -79,17 +78,58 @@ There are several features which the original C++ program does not have and they
 
 ### Refined Sampling
 
+For convenience, we divide the interval into many tiny segments. Each segment
+has a index. If a sample point falls inside the segment, we put the Δ value into
+the corresponding integer bin.
+
+Efficiently stored in sparse array and easy to perform resampling and other
+strategies. Because manipulating integers is much easier than manipulating
+floats, for instance, we want to know whether this area has been sampled or not.
+If we find an interval where its Δ value is near to zero, we apply the refined
+sampling to that area. Effectively we insert more sample points into the index
+bin.
+
 ![RefinedSampling3D](./images/RefineSampling3D.svg)
+
 ![RefinedSamplingContour](./images/RefineSamplingContour.svg)
 
 
 ### Bead Threading
+
+The zero points may belong to different flips of the dropped edge (which we call
+D-Flips or dropped flips). We try to categorize them into different flips using
+both the distance and derivatives information.
+
 ![BeadThreading](./images/BeadThreading.svg)
 
+
 ### Alternative Interpolation
+
 ![AlternativeInterpolation](./images/AlternativeInterpolation.svg)
 
+To avoid artifacts in resampling, for example, non-uniform sample points may
+result in fluctuation of the interpolation, if they are too close. Thus, we
+interpolate them alternatively.
+
+
 ### Priority Search w/ Drop Offsets 
+
+The motivation is to find a graph with multiple solution by several small offsets of the dropped edges.
+For each time we solve the $c\_i^0$, we will simultaneously solve for $c\_i^(+5%)$ and $c\_i^(-5%)$.
+
+We want the priority function to be  
+- **Look different**: the earlier the D-Flips diverse, the higher priority it has.
+- **Solve quickly**: the longer whose D-Flips are, the higher priority it has.
+- **Less offsets**: the less number of  dropped edges changed, the higher priority it has.
+
+## Flip Generalization
+
+Previously, specified the flip, we only take one solution from the quadratic
+equation of constructing the two tree.
+
+We may take both of them, and maintain different branches, the two-tree flip.
+They are not all two-tree flips, only related to Cayley parameters Though they
+may take exponential time.
 
 
 ## Results
