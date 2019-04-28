@@ -117,7 +117,7 @@ ExportGraphviz[graph_Graph, o:OptionsPattern[]] := Module[
 		vertexlist, edgelist, vertexcoords, vertexdot, edgedot, width, scaleRatio
 	},
 	
-	{scaleRatio} = OptionValue["ScaleRatio", {o}];
+	{scaleRatio} = OptionValue[ExportGraphviz, {o}, {"ScaleRatio"}];
 
 	vertexlist = VertexList[graph];
 	vertexcoords = (VertexCoordinates /. Options[graph]);
