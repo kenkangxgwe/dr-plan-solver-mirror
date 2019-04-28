@@ -40,8 +40,8 @@ Needs["DRPLAN`Core`"]
 (*Displacement*)
 
 
-Options[Displacement] = {"AddEdge" -> True};
-Displacement::neq = "Two graphs have different number of vertices.";
+Options[Displacement] = {"AddEdge" -> True}
+Displacement::neq = "Two graphs have different number of vertices."
 Displacement[node1_DRNode, node2_DRNode, OptionsPattern[]] := Module[
     {
         graph1 = node1["Graph"], graph2 = node2["Graph"],
@@ -78,54 +78,51 @@ Displacement[node1_DRNode, node2_DRNode, OptionsPattern[]] := Module[
     ];
     colorMap = Thread[combinedEdgeList -> PadRight[colorMap, Length[combinedEdgeList], {{RGBColor[0.6, 0.6, 0.6], Dashed}}]];
     combinedGraph = Graph[combinedVertexList, combinedEdgeList, VertexCoordinates -> coordMap, EdgeStyle -> colorMap, VertexLabels -> "Name"]
-];
+]
 
 
 (* ::Item:: *)
 (*RigidityMatrix*)
 
 
-RigidityMatrix[graph_Graph] := Module[
+RigidityMatrix[graph_Graph] := With[
     {
-        edgelist, coordMap
+        edgelist = EdgeList[graph]
     },
 
-    edgelist = EdgeList[graph];
     SparseArray[Join @@ (MapIndexed[RigidityElement[graph], edgelist])]
-];
+]
 
 
 (* ::Item:: *)
 (*RigidityElement*)
 
 
-RigidityElement[graph_][UndirectedEdge[v1_Integer, v2_Integer], {row_Integer}] := Module[
+RigidityElement[graph_][UndirectedEdge[v1_Integer, v2_Integer], {row_Integer}] := With[
     {
-        displacement
+        displacement = Subtract @@ PropertyValue[{graph, #}, VertexCoordinates]& /@ {v1, v2}
     },
 
-    displacement = Subtract @@ PropertyValue[{graph, #}, VertexCoordinates]& /@ {v1, v2};
     {
         {row, 2 * v1 + 1} -> First@displacement,
         {row, 2 * v1 + 2} -> Last@displacement,
         {row, 2 * v2 + 1} -> First@(-displacement),
         {row, 2 * v2 + 2} -> Last@(-displacement)
     }
-];
+]
 
 
 (* ::Item:: *)
 (*InfinitesimallyRigidQ*)
 
 
-InfinitesimallyRigidQ[graph_Graph] := Module[
+InfinitesimallyRigidQ[graph_Graph] := With[
     {
-        rigidityMatrix
+        rigidityMatrix = RigidityMatrix[graph]
     },
 
-    rigidityMatrix = RigidityMatrix[graph];
-    (Last@Dimensions[rigidityMatrix] - MatrixRank[rigidityMatrix]) == 3
-];
+    (2 * VertexCount[graph] - MatrixRank[rigidityMatrix]) == 3
+]
 
 
 End[]
