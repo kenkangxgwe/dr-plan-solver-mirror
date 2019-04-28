@@ -81,6 +81,13 @@ ToString[NodeSolution[solution_Association, domain_Association, dFlip_List, cFli
 ]
 
 
+PrintProgress[node_DRNode] := (
+    NotebookDelete[$lastProgress];
+    $lastProgress = PrintTemporary[Column[{
+        Row[{"Num of solutions for node ", ToString[node], ": ", Length[node["Solutions"]]}],
+        Row[{"Memory in use: ", N[UnitConvert[Quantity[MemoryInUse[], "Bytes"], "Megabytes"]]}]
+    }]];
+)
 
 (* ::Section:: *)
 (*Realization*)
@@ -185,7 +192,7 @@ calcCoordsImpl[node_DRNode, CayleyLength_Association, CayleyFlip_Association][
 
     If[Length[coordsList] < 2, Return[{{(* stop recursion *)}, coordsList}]];
 
-    {v1, v2} = AdjacencyList[node["Graph"], v0]
+    {v1, v2} = AdjacencyList[rootgraph, v0]
     // Select[(# < v0 && PropertyValue[{rootgraph, # <-> v0}, "EdgeType"] != "Drop")&]
     // Replace[err:Except[{_Integer, _Integer}] :> (
         Message[calcCoords::ntwotr, v0, err];
@@ -276,7 +283,8 @@ Options[SolveNode] = {
     (* All to re-evaluate current and all sub- nodes *)
     "Reevaluate" -> False,
     (* Try all cayley flips *)
-    "AllCFlip" -> False
+    "AllCFlip" -> False,
+    "SowSampleList" -> False
 }
 
 SolveNode::invtdf = "Invalid D-flip specified: `1`."
@@ -296,7 +304,9 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
         subReevaluate
     },
 
-    {reevaluate, allCFlip} = OptionValue[SolveNode, {o}, {"Reevaluate", "AllCFlip"}];
+    {reevaluate, allCFlip, sowSampleList} = OptionValue[SolveNode, {o}, {"Reevaluate", "AllCFlip", "SowSampleList"}];
+
+    $SowSampleList = sowSampleList;
 
     (* Print["Solving " <> ToString[node]]; *)
     If[node["IsCayleyNode"],
@@ -345,12 +355,25 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
             "AllCFlip" -> allCFlip
         ]&, {node["SubNodes"], subDFlips}];
         (* Memoization *)
-        {solutions, $sampleLists} = Table[
-            Reap[SolveDFlip[node, nodeSolution]],
-            {nodeSolution, nodeSolutions}
+        (* {solutions, $sampleLists} = Map[
+            ((Echo[First[#1]]; Reap[SolveDFlip[node, Last[#1]]])&),
+            Transpose[{Range[1], Take[nodeSolutions, 1]}]
+        ] // Transpose; *)
+        {solutions, $sampleLists} = ParallelMap[
+            ((Echo[First[#1]]; Reap[SolveDFlip[node, Last[#1]]])&),
+            Transpose[{Range[4], Take[nodeSolutions, 4]}],
+            DistributedContexts -> None
         ] // Transpose;
+        Abort[];
+        (* {solutions, $sampleLists} = ParallelTable[
+            Reap[SolveDFlip[node, nodeSolution]],
+            {nodeSolution, nodeSolutions},
+            DistributedContexts -> {"DRPLAN`Core`", "DRPLAN`Solver`"}
+        ] // Transpose; *)
         $sampleLists = Flatten[$sampleLists, 1];
-        node["Solutions"] = Echo[#, "nodeSolutions"]& @ Part[Flatten[solutions], curDFlip]
+        node["Solutions"] = Part[Flatten[solutions], curDFlip];
+        PrintProgress[node];
+        node["Solutions"]
     ]
 ]
 
@@ -675,7 +698,7 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
     freeSamples = If[Length[node["FreeCayley"]] != 0,
         SparseArray[Values[getSamples /@ KeyTake[domain, First[node["FreeCayley"]]]]],
         Echo["Last Cayley"];
-        $on = True;
+        (* $on = True; *)
         {}
     ];
     
@@ -686,20 +709,23 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
         (<|First[node["FreeCayley"]] -> #|>&) /@ Select[First[freeSamples], Not@*MissingQ]
     ];
     firstResults = scanSamples[node, nodeSolution] /@ firstSamples; *)
-    $on = False;
+    (* $on = False; *)
     firstSamples = If[node["FreeCayley"] === {},
         {<||>},
         First[freeSamples]
     ];
     (* If[$on, Echo[firstSamples]]; *)
     (* Echo[node["FreeCayley"]]; *)
+    Echo["start first sampling"];
     firstResults = If[node["FreeCayley"] === {},
         {Tuple[scanSamples[node, nodeSolution, dropOffset][<||>]]},
         (Replace[freeSample:Except[_Missing] :> (
             Tuple[scanSamples[node, nodeSolution, dropOffset][<|First[node["FreeCayley"]] -> freeSample|>]]
         )] /@ firstSamples)
     ];
-    If[$on, Echo[firstResults]];
+    Echo["First Sampling Finished"];
+    Abort[];
+    (* If[$on, Echo[firstResults]]; *)
     (* Echo[firstResults]; *)
     If[node["FreeCayley"] === {},
         finalSamples = firstSamples;
@@ -709,7 +735,8 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
         (* If[nearZerosIntervals =!= {}, Echo[refinedFreeSamples]];
         Abort[]; *)
 
-        $on = True;
+        (* $on = True; *)
+        Echo["Start Refine Sampling"];
         refinedResults = (Replace[freeSample:Except[_Missing] :> (
             Tuple[scanSamples[node, nodeSolution, dropOffset][<|First[node["FreeCayley"]] -> freeSample|>]]
         )] /@ refinedFreeSamples);
@@ -722,6 +749,7 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
             Most[ArrayRules[firstResults]] ~Join~ Most[ArrayRules[refinedResults]],
             $SampleDivisor + 1, Missing["NotSampled"]
         ];
+        Echo["Refine Sampling finished"];
 
     ];
     
@@ -729,6 +757,7 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
     (* interpZeros[firstSamples, #]& /@ Transpose[firstResults] *)
     (* Echo@threadZeros[Identity@@@Select[finalResults, Not@*MissingQ]]; *)
     (* Abort[]; *)
+    Echo["Bead Threading"];
     MapIndexed[
         interpZeros[node, nodeSolution, Select[finalSamples, Not@*MissingQ], #1, First[#2]]&,
         threadZeros[Identity@@@Select[finalResults, Not@*MissingQ]]
@@ -742,7 +771,7 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
         solution, domain, tFlip,
         refinedDomain, targetSamples, cayleyLength,
         sampleList, approxIntervals, targetRefinedSamples, refinedSampleList,
-        threshold, zeroThreshold, interp, interpd, tmpZeros
+        threshold, zeroThreshold, zeroIntervals, approxZeros, interp, interpd, tmpZeros
     },
 
     solution = Part[nodeSolution, 1];
@@ -750,14 +779,14 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
     tFlip = Part[nodeSolution, 4];
 
     (* refine the domain use triangle inequalities *)
-    refinedDomain = t`$rd = IntervalIntersection[
+    refinedDomain = (*t`$rd =*) IntervalIntersection[
         domain[node["TargetCayley"]],
         refineInterval[node, node["TargetCayley"],
             (* we require the target cayley parameter not appears in its prior vertices' solutions *)
             (#[freeSample]&) /@ KeySelect[solution, (# < node["TargetCayley"]&)]
         ]
     ];
-    If[Head[refinedDomain] =!= Interval, Echo[t`rd]];
+    (* If[Head[refinedDomain] =!= Interval, Echo[t`rd]]; *)
     If[(Max[#] - Min[#]&)[refinedDomain] <= ($MachineEpsilon * $SampleDivisor), Echo[freeSample,"Empty Refined Interval"]; Return[{}]];
 
     targetSamples = getSamples[refinedDomain];
@@ -812,7 +841,7 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
     (* sampleLists = sampleList; *)
 
     (* To draw 3D points plot, uncomment the following line*)
-    If[Length[node["FreeCayley"]] > 0,
+    If[$SowSampleList && Length[node["FreeCayley"]] > 0,
         sampleList // ArrayRules // Most
         // Cases[({pos_} -> Pair[x_, y_]) :> {freeSample[First@node["FreeCayley"]], x, y}]
         // Sow
@@ -863,12 +892,11 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
 
 ]
 
-realizeNode[node_DRNode, Solution_Association, TFlip_Association, sample_Association] := Module[
+realizeNode[node_DRNode, Solution_Association, TFlip_Association, sample_Association] := With[
     {
-        cayleyLength, coordsList, dropEdge
+        cayleyLength = ((#[sample]&) /@ Solution)
     },
 
-    cayleyLength = ((#[sample]&) /@ Solution);
     Check[
         calcCoords[node, VertexList[node["Graph"]], cayleyLength, TFlip],
         $Failed
@@ -880,6 +908,10 @@ AlternativeInterpolation[list_List] := Module[
     {
         first, last, midOdd, midEven, interpOdd, interpEven
     },
+
+    If[Length[list] < 6,
+        Return[InterpolatingFunctionGroup[{Interpolation[list, InterpolationOrder -> 3, Method -> "Hermite"]}]]
+    ];
 
     first = First[list];
     last = Last[list];
@@ -1072,11 +1104,7 @@ getApproxZerosImpl[sampleList_SparseArray][{{trueZeros:{__}, intervals:{__}}, {u
 
 getBoundaryApproxZeros::nep = "Cannot find the neighbor point of the boundary point."
 getBoundaryApproxZeros[_, {}] := {}
-getBoundaryApproxZeros[sampleList_SparseArray, zeroIntervals:{__}] := Module[
-    {
-
-    },
-
+getBoundaryApproxZeros[sampleList_SparseArray, zeroIntervals:{__}] := (
     {If[Part[zeroIntervals, 1, 1] == 1,
         Part[sampleList, (LengthWhile[Rest[sampleList], MissingQ] + 2)]
         // Replace[{
@@ -1109,7 +1137,7 @@ getBoundaryApproxZeros[sampleList_SparseArray, zeroIntervals:{__}] := Module[
         }],
         Nothing
     ]}
-]
+)
 
 
 interpZeros[node_DRNode, nodeSolution_NodeSolution, samples_, sampleList:{(_?NumericQ|_Missing)..}, index_Integer] := Module[
@@ -1171,13 +1199,12 @@ TerminateLine[state_Association, index_Integer] := Module[
 	ReplacePart[state, {"active" -> activeLines, "terminated" -> terminatedLines}]
 ] 
 
-AllLines[state_Association] := Module[
+AllLines[state_Association] := With[
 	{
 		activeLines = state["active"], terminatedLines = state["terminated"],
-		line, numBeads
+		numBeads = Length[state["beads"]]
 	},
 	
-	numBeads = Length[state["beads"]];
 	(Table[Missing[], #start] ~Join~ #beads ~Join~ Table[Missing[], numBeads - #start - Length[#beads]]&) /@ (activeLines ~Join~ terminatedLines)
 	
 ]
@@ -1185,11 +1212,10 @@ AllLines[state_Association] := Module[
 
 ThreadBeads[state_Association] := Module[
 	{
-		position = state["position"], beads = state["beads"], curBeads,
-		activeLines
+		position = state["position"] + 1, beads = state["beads"],
+        curBeads, activeLines
 	},
 	
-	position += 1;
 	curBeads = Part[beads, position];
 	activeLines = state["active"];
 	activeLines = MapThread[ReplacePart[#1, "beads" -> Append[#1["beads"], #2]]&, {
@@ -1219,6 +1245,7 @@ threadZeros[zeroTuples_List] := Module[
     {
         steps
     },
+
 	If[Length[zeroTuples] == 1,
 		Return[Transpose[{Part[zeroTuples, 1, All, 1]}]]
 	];
@@ -1227,7 +1254,10 @@ threadZeros[zeroTuples_List] := Module[
 ]
 
 
-(* TODO: merge threadLine and threadStep *)
+(*
+    TODO: merge threadLine and threadStep,
+    or maybe not?
+*)
 
 
 threadLine[state_Association, step_] := Module[
@@ -1238,7 +1268,7 @@ threadLine[state_Association, step_] := Module[
     },
 
     numLines = Length[step];
-    activeIds = Through[state["active"]["index"]] ;
+    activeIds = Through[state["active"]["index"]];
 
     (* terminates lines that out of boundary *)
     terminatedIds = Select[activeIds, (# <  1 || # > numLines)&]; 
@@ -1248,16 +1278,12 @@ threadLine[state_Association, step_] := Module[
     activeIds = Complement[activeIds, terminatedIds];
     newState = Fold[CreateLine, newState, Complement[Range[numLines], activeIds]];
     
-    newState = ThreadBeads[newState];
-    newState = ChangeLineIdx[newState, step]
+    ChangeLineIdx[ThreadBeads[newState], step]
 
 ]
 
 
-threadStep[firstPair_, secondPair_] := Module[
-    {
-    },
-
+threadStep[firstPair_, secondPair_] := (
     If[firstPair === {} || secondPair === {},
        Return[{}]
     ];
@@ -1298,7 +1324,7 @@ threadStep[firstPair_, secondPair_] := Module[
 
     ]
 
-]
+)
 
 
 End[]

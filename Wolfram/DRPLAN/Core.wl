@@ -50,10 +50,8 @@ Needs["GraphvizUtils`"]
 
 
 (* Some constants are declared here. *)
-DRPLAN["EPSILON"] = 2 * 10^(-5)
-DRPLAN["DRNodeVSFunc"][{xc_, yc_}, name_, {w_, h_}] := name["Graph"]
-DRPLAN["CCW"[p_List, q_List, r__List]] := Det[Append[#, 1] & /@ {p, q, r}]
-PrintEcho = ((Print[#1];#1)&)
+$Epsilon = 2 * 10^(-5)
+ccwQ[p_List, q_List, r__List] := Det[Append[#, 1] & /@ {p, q, r}]
 
 
 (* ::Section:: *)
@@ -135,7 +133,7 @@ GenerateDRPlan[node_DRNode] := Module[
         (* is a cayley node *)
         soleEdge = First[EdgeList[node["Graph"]]];
         node["AllCayley"] = node["FreeCayley"] = {node["TargetCayley"]} = {EdgeIndex[node["Root"]["Graph"], soleEdge]};
-        node["Interval"] = (Interval[{Min[#] + DRPLAN["EPSILON"], Max[#] - DRPLAN["EPSILON"]}]&) @ PropertyValue[{node["Root"]["Graph"], soleEdge}, "Interval"];
+        node["Interval"] = (Interval[{Min[#] + $Epsilon, Max[#] - $Epsilon}]&) @ PropertyValue[{node["Root"]["Graph"], soleEdge}, "Interval"];
         node["EdgeRules"] = {},
         (* not a cayley node *)
         {freeCayley, subNodes} = GenerateDRNode[node];
