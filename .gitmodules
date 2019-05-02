@@ -1,3 +1,6 @@
 [submodule "splinter"]
 	path = externals/splinter
 	url = https://github.com/bgrimstad/splinter
+[submodule "Wolfram/extras/Matypetica"]
+	path = Wolfram/extras/Matypetica
+	url = https://github.com/kenkangxgwe/Matypetica

@@ -258,6 +258,36 @@ calcCoordsImpl[node_DRNode, CayleyLength_Association, CayleyFlip_Association][
 
 
 (* ::Subsection:: *)
+(*Immutable Type Definition*)
+
+
+DeclareType[DRNode, <|
+    "Root" -> _Association,
+    "Graph" -> _Graph,
+    "FreeCayley" -> _List,
+    "TargetDrop" -> _Integer,
+    "TargetCayley" -> _Integer
+|>]
+
+
+(*
+    This function stores the subvalues of the DRNode[$id] into a immutable association
+    in order to pass it for parallel solving.
+    It should has the same interface as the DRNode[$id].
+    If the solving algorithm changes, do not forget to add those values needed here.
+*)
+PersistDRNode[node_DRNode] := (
+    DRNode[<|
+        "Root" -> <|"Graph" -> node["Root"]["Graph"]|>,
+        "Graph" -> node["Graph"],
+        "FreeCayley" -> node["FreeCayley"],
+        "TargetDrop" -> node["TargetDrop"],
+        "TargetCayley" -> node["TargetCayley"]
+    |>]
+)
+
+
+(* ::Subsection:: *)
 (*Solving*)
 
 
@@ -266,7 +296,9 @@ Options[SolveDRPlan] = {
     "Reevaluate" -> False,
     "AllCFlip" -> False
 }
-SolveDRPlan[node_DRNode, o:OptionsPattern[]] := getPlanSolution /@ SolveNode[node, All, o]
+SolveDRPlan[node_DRNode, o:OptionsPattern[]] := (
+    getPlanSolution /@ SolveNode[node, All, o]
+)
 
 getPlanSolution[nodeSolution_NodeSolution] := Module[
     {
@@ -298,7 +330,7 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
     {
         cayleyVertex, rootgraph,
         nodeSolutions, curDFlip, subDFlips, 
-        solutions,
+        nodeI, solutions,
         (* options *)
         reevaluate, allCFlip,
         subReevaluate
@@ -354,22 +386,26 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
             "Reevaluate" -> subReevaluate,
             "AllCFlip" -> allCFlip
         ]&, {node["SubNodes"], subDFlips}];
+
+        (* Prepare Immutable data for parallelism*)
+        nodeI = PersistDRNode[node];
+
         (* Memoization *)
         (* {solutions, $sampleLists} = Map[
             ((Echo[First[#1]]; Reap[SolveDFlip[node, Last[#1]]])&),
             Transpose[{Range[1], Take[nodeSolutions, 1]}]
         ] // Transpose; *)
-        {solutions, $sampleLists} = ParallelMap[
-            ((Echo[First[#1]]; Reap[SolveDFlip[node, Last[#1]]])&),
+        (* {solutions, $sampleLists} = ParallelMap[
+            ((Echo[First[#1]]; Reap[SolveDFlip[nodeI, Last[#1]]])&),
             Transpose[{Range[4], Take[nodeSolutions, 4]}],
-            DistributedContexts -> None
-        ] // Transpose;
-        Abort[];
-        (* {solutions, $sampleLists} = ParallelTable[
-            Reap[SolveDFlip[node, nodeSolution]],
-            {nodeSolution, nodeSolutions},
-            DistributedContexts -> {"DRPLAN`Core`", "DRPLAN`Solver`"}
+            DistributedContexts -> {"DRPLAN`Core`", "DRPLAN`Solver`", "DataType`"}
         ] // Transpose; *)
+        {solutions, $sampleLists} = ParallelTable[
+            Reap[SolveDFlip[nodeI, nodeSolution]],
+            {nodeSolution, nodeSolutions},
+            DistributedContexts -> {"DRPLAN`Core`", "DRPLAN`Solver`", "DataType`"},
+            Method -> "FinestGrained"
+        ] // Transpose;
         $sampleLists = Flatten[$sampleLists, 1];
         node["Solutions"] = Part[Flatten[solutions], curDFlip];
         PrintProgress[node];
@@ -716,15 +752,12 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
     ];
     (* If[$on, Echo[firstSamples]]; *)
     (* Echo[node["FreeCayley"]]; *)
-    Echo["start first sampling"];
     firstResults = If[node["FreeCayley"] === {},
         {Tuple[scanSamples[node, nodeSolution, dropOffset][<||>]]},
         (Replace[freeSample:Except[_Missing] :> (
             Tuple[scanSamples[node, nodeSolution, dropOffset][<|First[node["FreeCayley"]] -> freeSample|>]]
         )] /@ firstSamples)
     ];
-    Echo["First Sampling Finished"];
-    Abort[];
     (* If[$on, Echo[firstResults]]; *)
     (* Echo[firstResults]; *)
     If[node["FreeCayley"] === {},
@@ -736,7 +769,6 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
         Abort[]; *)
 
         (* $on = True; *)
-        Echo["Start Refine Sampling"];
         refinedResults = (Replace[freeSample:Except[_Missing] :> (
             Tuple[scanSamples[node, nodeSolution, dropOffset][<|First[node["FreeCayley"]] -> freeSample|>]]
         )] /@ refinedFreeSamples);
@@ -749,7 +781,6 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
             Most[ArrayRules[firstResults]] ~Join~ Most[ArrayRules[refinedResults]],
             $SampleDivisor + 1, Missing["NotSampled"]
         ];
-        Echo["Refine Sampling finished"];
 
     ];
     
@@ -757,10 +788,9 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
     (* interpZeros[firstSamples, #]& /@ Transpose[firstResults] *)
     (* Echo@threadZeros[Identity@@@Select[finalResults, Not@*MissingQ]]; *)
     (* Abort[]; *)
-    Echo["Bead Threading"];
     MapIndexed[
         interpZeros[node, nodeSolution, Select[finalSamples, Not@*MissingQ], #1, First[#2]]&,
-        threadZeros[Identity@@@Select[finalResults, Not@*MissingQ]]
+        threadZeros[Identity@@@Select[finalResults, Not@*MissingQ]] (* see Thread.wl *)
     ]
 
 ]

@@ -1,7 +1,10 @@
 #!/usr/bin/env wolframscript
 (* ::Package:: *)
 
-PrependTo[$Path, DirectoryName[$InputFileName]]
+$Path = Join[{
+	DirectoryName[$InputFileName],
+	FileNameJoin[{DirectoryName[$InputFileName], "extras", "Matypetica", "src"}]
+}, $Path]
 
 ImportContexts = {
 	"DRPLAN`Core`",

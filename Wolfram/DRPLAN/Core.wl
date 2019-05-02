@@ -22,7 +22,7 @@
 (*DRPLAN*)
 
 
-BeginPackage["DRPLAN`Core`"]
+BeginPackage["DRPLAN`Core`", {"DataType`"}]
 ClearAll[Evaluate[Context[] <> "*"]]
 
 
