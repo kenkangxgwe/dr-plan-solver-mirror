@@ -22,25 +22,20 @@
 (*DRPLAN Solver*)
 
 
-BeginPackage["DRPLAN`Solver`"]
+BeginPackage["DRPLAN`Solver`", {"DRPLAN`Core`"}]
 ClearAll[Evaluate[Context[] <> "*"]]
 
 
 SolveDRPlan::usage = "SolveDRPlan[node_DRNode] solves a DRPlan by passing in the root DR-node."
 SolveNode::usage = "SolveNode[node_DRNode] solves the input node and its sub-nodes and returns all solutions.
 SolveNode[node_DRNode, dFlip:(All | _List)] solves the node only for specified D-flip."
-SolveAllOffsetsStart::usage = "SolveAllOffsetsStart[root_DRNode, offset] starts a time-consuming search for different dropped edge offsets \
-and pause until it found one solution."
-SolveAllOffsetsContinue::usage = "SolveAllOffsetsContinue[] continues the search that SolveAllOffsetsStart started last time." 
 InterpolatingFunctionGroup::usage = "A group of interpolating functions for smoothing purpose."
 NodeSolution::usage = "An object that contains the information for a node solution."
-OffsetSolution::usage = "An object that contains the information for a offset solution."
 
 
 Begin["`Private`"]
 ClearAll[Evaluate[Context[] <> "*"]]
-Needs["DRPLAN`Core`"]
-Needs["Parallel`Queue`Priority`"]
+Needs["DRPLAN`Thread`"]
 
 
 UnEcho = (#1&)
@@ -59,15 +54,6 @@ Construct[MakeBoxes, NodeSolution[Panel[Grid[{
     {"D-Flip:", Panel[dFlip]},
     {"C-Flip:", cFlip}
 }, Alignment -> {{Left, Left}}]]], StandardForm]
-
-
-OffsetSolution /: MakeBoxes[OffsetSolution[nodeSolutions:{__NodeSolution}, offsets_Association, node_DRNode], StandardForm] := 
-Construct[MakeBoxes, OffsetSolution[Panel[Grid[{
-    {"NodeSolution:", SpanFromLeft},
-    {Panel[Column @ Normal @ nodeSolutions], SpanFromLeft},
-    {"Offsets:", offsets},
-    {"Node", node}
-}], Alignment -> {{Left, Left}}]], StandardForm]
 
 
 ToString[NodeSolution[solution_Association, domain_Association, dFlip_List, cFlip_Association]] ^:= StringJoin[
@@ -436,213 +422,6 @@ mergeNodeSolution[nodeSolutions__NodeSolution] := With[
 
 
 (* ::Subsection:: *)
-(*solve offsets*)
-
-
-(* implement comparison operators for offset priority value *)
-
-OffsetPV /: Greater[OffsetPV[p11_, p12_, p13_], OffsetPV[p21_, p22_, p23_]] :=
-    If[p11 == p21,
-        If[p12 == p22,
-            p13 > p23,
-            p12 > p22
-        ],
-        p11 > p21
-    ]
-
-OffsetPV /: GreaterEqual[OffsetPV[p11_, p12_, p13_], OffsetPV[p21_, p22_, p23_]] :=
-    If[p11 == p21,
-        If[p12 == p22,
-            p13 >= p23, (* differs from above *)
-            p12 > p22
-        ],
-        p11 > p21
-    ]
-
-
-(* the priority function *)
-OffsetSolution /: Priority[offsetSolution_OffsetSolution] := Module[
-    {
-        dFlips, offsetsNum, diverseHeight, totalHeight
-    },
-
-    dFlips = Part[offsetSolution, (*NodeSolutions*) 1, All, (*D-Flips*) 3];
-    diverseHeight = ChainDiverseLevel[dFlips];
-    totalHeight = Depth[First[dFlips]];
-    offsetsNum = Part[offsetSolution, (*Offsets*) 2] // Length;
-
-    (* Main priority: the earlier whose D-Flips diverse, the higher priority it has *)
-    (* Tie breaker 1: the longer whose D-Flips are, the higher priority it has *)
-    (* Tie breaker 2: The less whose dropped edges offsetted, the higher priority it has *)
-    OffsetPV[-diverseHeight, totalHeight, -offsetsNum]
-
-]
-
-
-(*
-    The function finds the earliest level where at least two of the D-Flips differ from each other
-    It only works for DR-Chain, i.e., the DR-Plan is a chain ignoring all Cayley nodes.
-*)
-ChainDiverseLevel[dFlips_List] := ChainDiverseLevelImpl[dFlips, 0]
-ChainDiverseLevelImpl[{}, height_Integer] := height
-ChainDiverseLevelImpl[dFlips_List, height_Integer] := ChainDiverseLevelImpl[
-    If[Length[First[dFlips]] == 1,
-        (* reaches the leave, terminate recursion *)
-        {},
-        (*
-            Recursively look for its left child.
-            In this case, make sure that the right child is always a Cayley node.
-        *)
-        Part[dFlips, All, 2]
-    ],
-    If[Equal @@ Part[dFlips, All, 1],
-        (*
-            The D-Flips are same at this level,
-            increase the height
-        *)
-        height + 1,
-        (*
-            At least two of them are different,
-            reset the height
-        *)
-        0
-    ]
-]
-
-
-SolveAllOffsetsContinue::nstart = "The solving for `1` has not start yet, please call SolveAllOffsetsStart[`1`, offsets]."
-SolveAllOffsetsContinue[node_DRNode] := Message[SolveAllOffsetsContinue::nstart, node] 
-(* Solve all offsets *)
-SolveAllOffsetsStart[root_DRNode, offsets:{__?NumericQ}] := Module[
-    {
-        offsetPQ
-    },
-
-    offsetPQ = priorityQueue[];
-    SolveAllLeaves[offsetPQ, root];
-
-    SolveAllOffsetsContinue[root] := (
-        While[!SolveOneOffset[offsetPQ, DeQueue[offsetPQ], offsets],
-            Echo[Size[offsetPQ], "Current Queue Size"]
-        ];
-        root["OffsetSolutions"]
-    );
-
-    SolveAllOffsetsContinue[root]
-]
-
-
-SolveAllLeaves[offsetPQ_, node_DRNode] := Module[
-    {
-
-    },
-
-    If[node["IsCayleyNode"],
-        node["OffsetSolutions"] = {OffsetSolution[
-            {NodeSolution[
-                <|node["TargetCayley"] -> (First @* (Curry[Through[#1[#2]]&, 2][Lookup /@ node["FreeCayley"]]))|>, (* identity function *)
-                <|node["TargetCayley"] -> node["Interval"]|>, (* domain *)
-                {1}, (* D-flip index *)
-                <||> (* overwriting C-flip*)
-            ]}, (* One DFlip *)
-            <||>, (* No Offsets *)
-            node (* corresponding node *)
-        ]};
-
-        (* tell its parents that a new offset solution is born *)
-        notifyParents[offsetPQ, node],
-
-        Table[
-            subNode["Parents"] = Union[subNode["Parents"], {node}];
-            SolveAllLeaves[offsetPQ, subNode],
-            {subNode, node["SubNodes"]}
-        ];
-    ]
-
-]
-
-
-SolveOneOffset[
-    offsetPQ_,
-    OffsetSolution[
-        nodeSolutions:{__NodeSolution},
-        dropOffsets_Association,
-        node_DRNode
-    ],
-    offsets:{__?NumericQ}
-] := Module[
-    {
-        newDropOffsets, oldOffsetSolutions
-    },
-
-    oldOffsetSolutions = node["OffsetSolutions"];
-    node["OffsetSolutions"] = Echo[#, "OffsetSolutions"]& @ Table[
-        newDropOffsets = If[dropOffset == 1,
-            dropOffsets,
-            Append[dropOffsets, node["TargetDrop"] -> dropOffset]
-        ];
-        Table[
-            SolveDFlip[node, nodeSolution, dropOffset],
-            {nodeSolution, nodeSolutions}
-        ] // Flatten // Replace[{
-            {} :> Nothing,
-            ns:{__NodeSolution} :> OffsetSolution[ns, newDropOffsets, node],
-            err_ :> Throw[{"Unknown Result", err}]
-        }],
-
-        {dropOffset, offsets}
-    ];
-
-    notifyParents[offsetPQ, node];
-    node["OffsetSolutions"] = Join[oldOffsetSolutions, node["OffsetSolutions"]];
-    node["Root"] === node
-
-]
-
-
-notifyParents[offsetPQ_, node_DRNode] :=
-If[node["Root"] === node,
-    (* root is solved *)
-    Table[
-        Replace[offsetSolution,
-            OffsetSolution[nodeSolutions:{__NodeSolution}, offsets_Association, _DRNode] :> 
-                OffsetSolution[getPlanSolution /@ nodeSolutions, offsets, node]
-        ],
-        {offsetSolution, node["OffsetSolutions"]}
-    ],
-
-    (* add to the priority queue*)
-    Fold[EnQueue, offsetPQ, 
-        Table[Outer[
-            mergeOffsetSolution[parent, ##]&,
-            Sequence @@ Through[parent["SubNodes"]["OffsetSolutions"]]
-            ], {parent, node["Parents"]}
-        ] // Flatten
-    ]
-]
-
-
-mergeOffsetSolution::difofst = "Different offsets are specified for the same dropped edge."
-(* mergeOffsetSolution[node_DRNode, offsetSolutions:PatternSequence[{___OffsetSolution}..]] := 
-    Outer[mergeOffsetSolution, offsetSolutions] *)
-mergeOffsetSolution[node_DRNode, offsetSolutions__OffsetSolution] := Module[
-    {
-        offsetSolutionList
-    },
-
-    offsetSolutionList = List @@@ {offsetSolutions};
-
-    OffsetSolution[
-        mergeNodeSolution @@ Part[offsetSolutionList, All, 1],
-        Part[offsetSolutionList, All, 2]
-        // Merge[If[SameQ@@#, First[#], Message[mergeOffsetSolution::difofst]; Abort[]]&],
-        node
-    ]
-
-]
-
-
-(* ::Subsection:: *)
 (*solve node*)
 
 
@@ -790,7 +569,8 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
     (* Abort[]; *)
     MapIndexed[
         interpZeros[node, nodeSolution, Select[finalSamples, Not@*MissingQ], #1, First[#2]]&,
-        threadZeros[Identity@@@Select[finalResults, Not@*MissingQ]] (* see Thread.wl *)
+        (* see Thread.wl *)
+        threadZeros[Identity@@@Select[finalResults, Not@*MissingQ]]
     ]
 
 ]
@@ -901,7 +681,7 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
     ]
 
     If[Length[node["FreeCayley"]] == 0,
-        Echo[sampleList, "SampleList"];
+        (* Echo[sampleList, "SampleList"]; *)
         (* Echo[tmpZeros, "tmpZeros"]; *)
         If[Length[tmpZeros] == 0,
             Message[DRNode::nosolplan]
@@ -1206,155 +986,6 @@ interpZeros[node_DRNode, nodeSolution_NodeSolution, samples_, sampleList:{(_?Num
     newDFlip = ReplacePart[dflip, 1 -> index];
     NodeSolution[newSolution, newDomain, newDFlip, cflip]
 ]
-
-
-(* ::Section:: *)
-(*Thread*)
-
-
-NewThread[beads_] := <|"beads" -> beads, "terminated" -> {}, "active" -> {}, "position" -> 0|>
-
-CreateLine[state_Association, index_Integer] := ReplacePart[state, "active" -> Append[state["active"], CreateLine[index, state["position"]]]]
-CreateLine[index_Integer, pos_Integer] := <|"index" -> index, "beads" -> {}, "start" -> pos|>
-
-TerminateLine[state_Association, index_Integer] := Module[
-	{
-		activeLines, terminatingIdx, terminatedLines
-	},
-	
-	activeLines = state["active"];
-	terminatingIdx = FirstPosition[activeLines, _?(#index == index&), {}, {1}, Heads -> False];
-	terminatedLines = Join[state["terminated"], Part[activeLines, terminatingIdx]];
-	activeLines = Delete[activeLines, terminatingIdx];
-	ReplacePart[state, {"active" -> activeLines, "terminated" -> terminatedLines}]
-] 
-
-AllLines[state_Association] := With[
-	{
-		activeLines = state["active"], terminatedLines = state["terminated"],
-		numBeads = Length[state["beads"]]
-	},
-	
-	(Table[Missing[], #start] ~Join~ #beads ~Join~ Table[Missing[], numBeads - #start - Length[#beads]]&) /@ (activeLines ~Join~ terminatedLines)
-	
-]
-
-
-ThreadBeads[state_Association] := Module[
-	{
-		position = state["position"] + 1, beads = state["beads"],
-        curBeads, activeLines
-	},
-	
-	curBeads = Part[beads, position];
-	activeLines = state["active"];
-	activeLines = MapThread[ReplacePart[#1, "beads" -> Append[#1["beads"], #2]]&, {
-		activeLines,
-		Part[curBeads, Through[activeLines["index"]], 1]
-	}];
-	ReplacePart[state, {"position" -> position, "active" -> activeLines}]
-]
-
-
-ChangeLineIdx[state_Association, offsets_List] := Module[
-	{
-		activeLines
-	},
-	
-	activeLines = state["active"];
-	activeLines = MapThread[ReplacePart[#1, "index" -> (#1["index"] + #2)]&, {
-		activeLines,
-		Part[offsets, Through[activeLines["index"]]]
-	}];
-	
-	ReplacePart[state, "active" -> activeLines]
-]
-
-
-threadZeros[zeroTuples_List] := Module[
-    {
-        steps
-    },
-
-	If[Length[zeroTuples] == 1,
-		Return[Transpose[{Part[zeroTuples, 1, All, 1]}]]
-	];
-    steps = UnEcho@MapThread[threadStep, {Most@zeroTuples, Rest@zeroTuples}];
-    AllLines[Fold[threadLine, NewThread[zeroTuples], steps]]
-]
-
-
-(*
-    TODO: merge threadLine and threadStep,
-    or maybe not?
-*)
-
-
-threadLine[state_Association, step_] := Module[
-    {
-        numLines,
-        activeIds, terminatedIds,
-        newState = state
-    },
-
-    numLines = Length[step];
-    activeIds = Through[state["active"]["index"]];
-
-    (* terminates lines that out of boundary *)
-    terminatedIds = Select[activeIds, (# <  1 || # > numLines)&]; 
-    newState = Fold[TerminateLine, newState, terminatedIds];
-
-    (* add new lines *)
-    activeIds = Complement[activeIds, terminatedIds];
-    newState = Fold[CreateLine, newState, Complement[Range[numLines], activeIds]];
-    
-    ChangeLineIdx[ThreadBeads[newState], step]
-
-]
-
-
-threadStep[firstPair_, secondPair_] := (
-    If[firstPair === {} || secondPair === {},
-       Return[{}]
-    ];
-
-    (* Print["Comparing", firstPair, secondPair]; *)
-
-    If[Length @ firstPair == Length @ secondPair,
-       (* same length*)
-       If[(Positive /@ Part[firstPair, All, 2]) === (Positive /@ Part[secondPair, All, 2]),
-          (* derivaive match *)
-          Return[Table[0, Length @ firstPair]],
-          (* one-off *)
-          If[Abs[Part[firstPair, 1, 1] - Part[secondPair, -1, 1]] > Abs[Part[firstPair, -1, 1] - Part[secondPair, 1, 1]],
-             Return[Table[-1, Length @ firstPair]],
-             Return[Table[1, Length @ firstPair]]
-          ]
-       ],
-
-       (* not same length*)
-       If[Abs[Length @ firstPair - Length @ secondPair] == 1,
-          (* 3-2, 2-3, 2-1 or 1-2 *)
-          If[Positive @ Part[firstPair, 1, 2] === Positive @ Part[secondPair, 1, 2],
-              Return[Table[0, Length @ firstPair]],
-              If[Length @ firstPair > Length @ secondPair,
-                Return[Table[-1, Length @ firstPair]],
-                Return[Table[1, Length @ firstPair]]
-              ]
-          ],
-          (* 3-1 or 1-3*)
-          If[Length @ firstPair > Length @ secondPair,
-             (* 3-1 *)
-             Return[Table[1 - First @ FirstPosition[Part[firstPair, All, 1], First @ Nearest[Part[firstPair, All, 1], Part[secondPair, 1, 1]]], 3]],
-             (* 1-3 *)
-             Return[FirstPosition[Part[secondPair, All, 1], First @ Nearest[Part[secondPair, All, 1], Part[firstPair, 1, 1]]] - 1]
-          ]
-
-       ]
-
-    ]
-
-)
 
 
 End[]

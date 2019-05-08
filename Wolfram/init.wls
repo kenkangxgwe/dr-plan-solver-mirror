@@ -9,7 +9,9 @@ $Path = Join[{
 ImportContexts = {
 	"DRPLAN`Core`",
 	"DRPLAN`Solver`",
-	"DRPLAN`Visualizer`"
+	"DRPLAN`Visualizer`",
+	"DRPLAN`OffsetSolver`",
+	"DRPLAN`DFSSolver`"
 }
 
 WriteString[$Output, "Initializing DRPLAN... "]
