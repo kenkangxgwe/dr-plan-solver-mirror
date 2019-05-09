@@ -18,18 +18,22 @@
 *)
 
 
-BeginPackage["GraphvizUtils`"];
-ClearAll[Evaluate[Context[] <> "*"]];
+BeginPackage["GraphvizUtils`"]
+ClearAll[Evaluate[Context[] <> "*"]]
 
 
-ImportGraphviz::usage = "ImportGraphviz[dotfile_String] imports a graph from a dotfile.";
-ExportGraphviz::usage = "ExportGraphviz[graph_Graph] exports a dotfile string from a realization.";
-ConvertDotToCrdsAndCons::usage = "Convert a dotfile to Crds and Cons file.";
-HexColor::usage = "HexColor represent the discrete hexdecimal color space."
+ImportGraphviz::usage = "ImportGraphviz[dotfile_String] imports a graph from a dotfile."
+ExportGraphviz::usage = "ExportGraphviz[graph_Graph] exports a dotfile string from a realization."
+ConvertDotToCrdsAndCons::usage = "Convert a dotfile to Crds and Cons file."
+HexColor::usage = "HexColor[\"#rrggbb\"] represent the discrete hexdecimal color space."
 
 
-Begin["`Private`"];
-ClearAll[Evaluate[Context[] <> "*"]];
+Begin["`Private`"]
+ClearAll[Evaluate[Context[] <> "*"]]
+
+
+(* ::Subsection:: *)
+(*HexColor*)
 
 
 HexColor /: ColorConvert[color_?ColorQ, HexColor] := 
@@ -49,22 +53,35 @@ X11Color["Green"] = RGBColor["#00FF00"]
 X11Color["Pink"] = RGBColor["#FFC0CB"]
 
 
+(* ::Subsection:: *)
+(*ImportGraphviz*)
+
+
 Options[ImportGraphviz]= {
     "ImportRealization" -> True,
     "ImportColor" -> True
-};
+}
 
-ImportGraphviz[dotfile_String, OptionsPattern[]] := Module[
+ImportGraphviz[dotfile_String, o:OptionsPattern[]] := Module[
 	{
 		graphVertList = ToExpression[Import[dotfile, "VertexList"]],
 		graphEdgeList = (ToExpression[First[#]] <-> ToExpression[Last[#]])& /@ EdgeList[Import[dotfile, "Graph"]],
 		coordMap, colorMap, edgeTypeMap, boundaryMap,
-		edgeCustomProps, edgeWeight, edgeStyle, vertexCustomProps, fullGraph
+		edgeCustomProps, edgeWeight, edgeStyle, vertexCustomProps, fullGraph,
+		(* options *)
+		importRealization, importColor
 	},
 
+	{importRealization, importColor} = OptionValue[ImportGraphviz, {o}, {"ImportRealization", "ImportColor"}];
+
+	(* vertex coordinates *)
 	coordMap = Thread[graphVertList -> (("Coordinates" /. #)& /@ Import[dotfile, "VertexAttributes"])];
+
+	(* edge lengths (edgeWeight) *)
     edgeWeight = (N[Norm[(First[#] /. coordMap) - (Last[#] /. coordMap)]])& /@ graphEdgeList;
-    colorMap = If[TrueQ[OptionValue["ImportColor"]],
+
+	(* edge color *)
+    colorMap = If[TrueQ[importColor],
 		(* Convert to HexColor space to discretize the color value *)
 		(Fold[ColorConvert, Replace["Color", #], {HexColor, RGBColor}])&
 		/@ Import[dotfile, "EdgeAttributes"],
@@ -74,6 +91,12 @@ ImportGraphviz[dotfile_String, OptionsPattern[]] := Module[
 		err_ :> Throw[err]
 	}];
 	edgeStyle = MapThread[#1 -> #2&, {graphEdgeList, colorMap}];
+	(*
+		edge type:
+		- "Partial": fixed edge of the two tree,
+		- "Add": Cayley parameter,
+		- "Drop": dropped edge excluded from the two tree.
+	*)
 	edgeTypeMap = colorMap /. {
 		X11Color["Black"] | X11Color["Gray"] -> "Partial",
 		X11Color["Green"] -> "Add",
@@ -82,6 +105,7 @@ ImportGraphviz[dotfile_String, OptionsPattern[]] := Module[
 		res:{("Partial" | "Add" | "Drop")..} :> res,
 		err_ :> Throw[err]
 	}];
+	(* boundary edge *)
 	boundaryMap = colorMap /. {
 		X11Color["Black"] | X11Color["Green"] | X11Color["Red"] -> False,
 		X11Color["Gray"] | X11Color["Pink"] -> True
@@ -89,11 +113,29 @@ ImportGraphviz[dotfile_String, OptionsPattern[]] := Module[
 		res:{__?BooleanQ} :> res,
 		err_ :> Throw[err]
 	}];
+	(*
+		custom edge properties:
+		- "EdgeType"
+		- "BoundaryQ"
+	*)
 	edgeCustomProps = MapThread[( #1 -> {"EdgeType" -> #2, "BoundaryQ" -> #3})&, {graphEdgeList, edgeTypeMap, boundaryMap}];
+	(*
+		custom vertex properties:
+		- "Flip"
+	*)
     vertexCustomProps = (# -> {"Flip" -> False})& /@ graphVertList;
+	(*
+		native edge properties:
+		- EdgeWeight: edge length
+		- EdgeStyle
+
+		native vertex properties:
+		- VertexLabels: vertex id (from 0)
+		- VertexCoordinates
+	*)
     Graph[graphVertList, graphEdgeList, Properties -> vertexCustomProps ~ Join ~ edgeCustomProps,
         EdgeWeight -> edgeWeight, EdgeStyle -> edgeStyle, VertexLabels -> "Name", VertexCoordinates->
-        If[OptionValue["ImportRealization"],
+        If[importRealization,
             (graphVertList /.coordMap),
             Automatic
         ]
@@ -101,7 +143,7 @@ ImportGraphviz[dotfile_String, OptionsPattern[]] := Module[
     (*Print[vertexPropRules // Column];*)
     (*Print[edgePropRules // Column];*)
     (*Print[VertexList[fullGraph]/.coordMap];*)
-];
+]
 
 
 (* ::Subsection:: *)
@@ -110,7 +152,7 @@ ImportGraphviz[dotfile_String, OptionsPattern[]] := Module[
 
 Options[ExportGraphviz] := {
 	"ScaleRatio" -> 1.0
-};
+}
 
 ExportGraphviz[graph_Graph, o:OptionsPattern[]] := Module[
 	{
@@ -121,6 +163,7 @@ ExportGraphviz[graph_Graph, o:OptionsPattern[]] := Module[
 
 	vertexlist = VertexList[graph];
 	vertexcoords = (VertexCoordinates /. Options[graph]);
+	(* padding 0 bits *)
 	width = Floor[Log10[Max[vertexlist]] + 1];
 	vertexdot = MapThread[StringJoin["  ",
 		StringPadLeft[ToString[#1], width, "0"],
@@ -141,7 +184,7 @@ ExportGraphviz[graph_Graph, o:OptionsPattern[]] := Module[
 		" [color=\"black\", penwidth=1];\n"
 	]& /@ edgelist;
 	StringJoin["graph G {\n", vertexdot, "\n", edgedot, "}"]
-];
+]
 
 
 (* ::Subsection:: *)
@@ -158,10 +201,10 @@ ConvertDotToCrdsAndCons[dotfile_String] := Module[
 		Column[(ToString[#[[1]]]<>" "<>ToString[#[[2]]])&/@(VertexCoordinates/.Options[graph])],
 		Column[(ToString[#[[1]]]<>" "<>ToString[#[[2]]])&/@EdgeList[graph]]
 	}
-];
+]
 
 
-End[];
+End[]
 
 
-EndPackage[];
+EndPackage[]

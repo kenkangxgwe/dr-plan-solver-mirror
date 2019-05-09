@@ -58,13 +58,16 @@ ccwQ[p_List, q_List, r__List] := Det[Append[#, 1] & /@ {p, q, r}]
 (*Constructor*)
 
 
-$NodeID = 0 (* A global id for node *)
+(* A global ID for node *)
+$NodeID = 0
+(* get next unique node ID *)
 NodeIDGetNew[] := Symbol["$" <> ToString[($NodeID = $NodeID + 1)]]
 
 (* Constructs a new DRNode *)
 Options[NewDRNode] = {
     "ImportRealization" -> True
 }
+
 NewDRNode[dotfile_String, o:OptionsPattern[]] := NewDRNode[ImportGraphviz[dotfile, o]]
 
 NewDRNode[graph:(_Graph | _Subgraph)] := Module[
@@ -77,8 +80,10 @@ NewDRNode[graph:(_Graph | _Subgraph)] := Module[
     newNode["Parents"] = {};
     newNode["Graph"] = graph;
     newNode["Root"] = newNode;
+    newNode["PlanRules"] = {};
     newNode["Solutions"] = Missing["NotSolved"]; (* For memoization, should be constant once assign a Non-Missing value. *)
     newNode["OffsetSolutions"] = {}; (* Value gets updated from time to time. *)
+    newNode["DFSSolutions"] = {}; (* Value gets updated from time to time. *)
     newNode
 ]
 
@@ -87,8 +92,10 @@ NewDRNode[graph:(_Graph | _Subgraph)] := Module[
 (*AddSubNode*)
 
 
-(* Add a new subnode, containing only the edges.
-Thus the graph property should be accessed through root graph. *)
+(*
+    Add a new subnode, containing only the edges.
+    Thus the graph property should be accessed through root graph.
+*)
 AddSubNode[node_DRNode, vertOrEdges:{(_Integer?NonNegative|_UndirectedEdge)..}] := Module[
     {
         newSubNode
@@ -110,7 +117,11 @@ FlipAt[node_DRNode, vertices_List] := Module[
     },
 
     graph = node["Graph"];
-    (PropertyValue[{graph, #}, "Flip"] = True)& /@ vertices;
+    (* flip vertices *)
+    Table[
+        PropertyValue[{graph, v}, "Flip"] = True,
+        {v, vertices}
+    ];
     node["Graph"] = graph;
     node
 ]
@@ -122,7 +133,7 @@ FlipAt[node_DRNode, vertices_List] := Module[
 
 GenerateDRPlan[node_DRNode] := Module[
     {
-        soleEdge, freeCayley, subNodes
+        cayleyEdge, freeCayley, subNodes
     },
 
     If[node["Root"] === node, (*RootQ*)
@@ -131,10 +142,12 @@ GenerateDRPlan[node_DRNode] := Module[
 
     If[node["IsCayleyNode"] = EdgeCount[node["Graph"]] == 1,
         (* is a cayley node *)
-        soleEdge = First[EdgeList[node["Graph"]]];
-        node["AllCayley"] = node["FreeCayley"] = {node["TargetCayley"]} = {EdgeIndex[node["Root"]["Graph"], soleEdge]};
-        node["Interval"] = (Interval[{Min[#] + $Epsilon, Max[#] - $Epsilon}]&) @ PropertyValue[{node["Root"]["Graph"], soleEdge}, "Interval"];
-        node["EdgeRules"] = {},
+        cayleyEdge = First[EdgeList[node["Graph"]]];
+        node["AllCayley"] = node["FreeCayley"] = {node["TargetCayley"]} = {EdgeIndex[node["Root"]["Graph"], cayleyEdge]};
+        node["Interval"] = (Interval[{Min[#] + $Epsilon, Max[#] - $Epsilon}]&) @ PropertyValue[{node["Root"]["Graph"], cayleyEdge}, "Interval"];
+        (* rules for the DR-plan *)
+        node["PlanRules"] = {},
+
         (* not a cayley node *)
         {freeCayley, subNodes} = GenerateDRNode[node];
         node["SubNodes"] = node["SubNodes"] ~Join~ subNodes;
@@ -153,7 +166,7 @@ GenerateDRPlan[node_DRNode] := Module[
         node["SubNodes"] = node["SubNodes"] ~Join~ subNodes;
         node["AllCayley"] = Union[freeCayley, Union @@ Through[node["SubNodes"]["AllCayley"]]]
     ];
-    node["EdgeRules"] = ((node -> #&) /@ node["SubNodes"]) ~Join~ (Join @@ Through[node["SubNodes"]["EdgeRules"]]);
+    node["PlanRules"] = ((node -> #&) /@ node["SubNodes"]) ~Join~ (Join @@ Through[node["SubNodes"]["PlanRules"]]);
 ]
 
 
@@ -161,9 +174,13 @@ GenerateDRPlan[node_DRNode] := Module[
 (*GenerateDRNode*)
 
 
-(* Count down from the last edge to find a subnode. *)
-GenerateDRNode[node_DRNode] := GenerateDRNode[{node, EdgeCount[node["Graph"]], 0}, {{}, {}}]
-GenerateDRNode[{node_DRNode, edgeIndex_Integer?NonNegative, dropCounter_Integer?NonNegative}, {freeCayley:{_Integer?Positive...}, subNodes:{_DRNode...}}] := Module[
+(*
+    Count down from the last edge to find a subnode, only suitable for DR-chain.
+    Please consider replace this funciton in the long run,
+    with a more general method to produce a DR-node.
+*)
+GenerateDRNode[node_DRNode] := GenerateDRNodeImpl[{node, EdgeCount[node["Graph"]], 0}, {{}, {}}]
+GenerateDRNodeImpl[{node_DRNode, edgeIndex_Integer?NonNegative, dropCounter_Integer?NonNegative}, {freeCayley:{_Integer?Positive...}, subNodes:{_DRNode...}}] := Module[
     {
         graph, rootgraph, curEdge, newSubNodes = subNodes, rootEdgeIndex
     },
@@ -185,10 +202,10 @@ GenerateDRNode[{node_DRNode, edgeIndex_Integer?NonNegative, dropCounter_Integer?
                 ),
                 1 :> AppendTo[newSubNodes, AddSubNode[node, Range[0, Max[{First[curEdge], Last[curEdge]}]]]]
             }];
-            GenerateDRNode[{node, edgeIndex - 1, dropCounter + 1}, {freeCayley, newSubNodes}]
+            GenerateDRNodeImpl[{node, edgeIndex - 1, dropCounter + 1}, {freeCayley, newSubNodes}]
         ),
-        "Add" :> GenerateDRNode[{node, edgeIndex - 1, dropCounter}, {Prepend[freeCayley, rootEdgeIndex], subNodes}],
-        "Partial" :> GenerateDRNode[{node, edgeIndex - 1, dropCounter}, {freeCayley, subNodes}]
+        "Add" :> GenerateDRNodeImpl[{node, edgeIndex - 1, dropCounter}, {Prepend[freeCayley, rootEdgeIndex], subNodes}],
+        "Partial" :> GenerateDRNodeImpl[{node, edgeIndex - 1, dropCounter}, {freeCayley, subNodes}]
     }]
 ]
 
@@ -219,6 +236,7 @@ calcInterval[node_DRNode] := Module[
     addNum = Length[addEdgeIndices];
     edgeToCol = Association[Thread[(addEdgeIndices -> Range[addNum])]];
 
+    (* see documentation for LinearProgramming for the meanings of `m`, `b` and `lu` *)
     {m, b, lu} = ((Flatten[#, 1]&) /@ (Transpose @ Table[
         e = EdgeList[graph][[ei]];
         commonVertex = Intersection[AdjacencyList[graph, First[e]], AdjacencyList[graph, Last[e]]];
@@ -234,15 +252,22 @@ calcInterval[node_DRNode] := Module[
          // Flatten
          // (SparseArray[# ~Join~ {{_, 1} -> -Infinity, {_,2} -> Infinity}, {addNum, 2}]&);
     (*Echo@*MatrixForm/@{m, b, lu};*)
+
     mins = Association[
         (# -> LinearProgramming[SparseArray[{#} -> 1, addNum], m, List @@@ b, List @@@ lu].SparseArray[{#} -> 1, addNum])& /@ Range[addNum]
     ];
     maxs = Association[
         (# -> -LinearProgramming[SparseArray[{#} -> -1, addNum], m, List @@@ b, List @@@ lu].SparseArray[{#} -> -1, addNum])& /@ Range[addNum]
     ];
-    (PropertyValue[{graph, EdgeList[graph][[#]]}, "Interval"] = Interval[{mins[edgeToCol[#]], maxs[edgeToCol[#]]}])& /@ Keys[edgeToCol];
-	  node["Graph"] =  graph;
-	  node
+    (* update interval for every edge *)
+    Table[
+        With[{col = edgeToCol[edge]},
+            PropertyValue[{graph, EdgeList[graph][[edge]]}, "Interval"] = Interval[{mins[col], maxs[col]}]
+        ],
+        {edge, Keys[edgeToCol]}
+    ];
+    node["Graph"] = graph;
+    node
 ]
 
 

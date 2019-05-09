@@ -189,14 +189,13 @@ trackNode[node_DRNode] := Module[
 ]
 
 
-modifyGraph[graph_]:=Module[
-	  {
-
-    },
+(* graph modifier for visual purpose only *)
+modifyGraph[graph_Graph] := (
 
     (*VertexDelete[graph,5] // EdgeAdd[#,1\[UndirectedEdge]6]&*)
     graph
-]
+
+)
 
 
 NodeManipulateRenderingFunction[node_DRNode, nodeSolution_NodeSolution, freeCayleys_Association] := Module[
@@ -205,7 +204,7 @@ NodeManipulateRenderingFunction[node_DRNode, nodeSolution_NodeSolution, freeCayl
     },
 
     cayleyLength = (#[freeCayleys]&) /@ First[nodeSolution];
-    graph = node["Realize"[PlanSolution[cayleyLength, <||>]]];
+    graph = DRPLAN`Solver`Private`Realize[node, PlanSolution[cayleyLength, <||>]];
     If[FailureQ[graph], Return[$Failed]];
 
     cayleyEdges = Flatten @ {
@@ -244,10 +243,10 @@ AnalyzeNode[node_DRNode, nodeSolution_NodeSolution] := Module[
     AppendTo[maxs, Max[refinedDomain]]; *)
     With[
         {
-            constNodeSolution = nodeSolution,
-            constCayleys = cayleys,
-            constNode = node,
-            constVars = vars,
+            nodeSolution = nodeSolution,
+            cayleys = cayleys,
+            node = node,
+            vars = vars,
             controls = Sequence @@ MapThread[{{#1, #3, #2}, #3, #4}&, {vars, labels, mins, maxs}]
         },
 
@@ -255,9 +254,9 @@ AnalyzeNode[node_DRNode, nodeSolution_NodeSolution] := Module[
         (* Manipulate[NodeManipulateRenderingFunction[node, value], controls] *)
         Manipulate[
             NodeManipulateRenderingFunction[
-                constNode,
-                constNodeSolution,
-                Association[Thread[constCayleys -> constVars]]
+                node,
+                nodeSolution,
+                Association[Thread[cayleys -> vars]]
             ],
            controls
         ]
@@ -266,38 +265,41 @@ AnalyzeNode[node_DRNode, nodeSolution_NodeSolution] := Module[
 
 
 AnalyzeSolution[node_DRNode, cayleyLength_Association] :=
-    AnalyzeSolution[node, {cayleyLength, <||>}]
+    AnalyzeSolution[node, PlanSolution[cayleyLength, <||>]]
 AnalyzeSolution[node_DRNode, planSolution_PlanSolution] := Module[
     {
         originGraph, resultGraph
     },
 
     originGraph = node["Root"]["Graph"];
-    resultGraph = node["Root"]["Realize"[planSolution]];
-    Row @ {
-        Graph[resultGraph, Options[originGraph, EdgeStyle], ImageSize -> 400],
-        Grid[({
-            #1 \[UndirectedEdge] #2,
-            PropertyValue[{originGraph, #1 \[UndirectedEdge] #2}, EdgeStyle],
-            Chop[EuclideanDistance[
-                PropertyValue[{resultGraph, #1}, VertexCoordinates], 
-                PropertyValue[{resultGraph, #2}, VertexCoordinates]
-            ] - EuclideanDistance[
-                PropertyValue[{originGraph, #1}, VertexCoordinates], 
-                PropertyValue[{originGraph, #2}, VertexCoordinates]
-            ]],
-            Row @ {(Chop[EuclideanDistance[
-                PropertyValue[{resultGraph, #1}, VertexCoordinates], 
-                PropertyValue[{resultGraph, #2}, VertexCoordinates]
-            ] / EuclideanDistance[
-                PropertyValue[{originGraph, #1}, VertexCoordinates], 
-                PropertyValue[{originGraph, #2}, VertexCoordinates]
-            ]] - 1) * 100,
-            "%"
-            }
-        } &) @@@ Select[EdgeList[originGraph], PropertyValue[{originGraph, #}, "EdgeType"] =!= "Partial"&]
-        , Alignment -> {{"\[UndirectedEdge]", Center, ".", "."}, Baseline}]
-    }
+    resultGraph = DRPLAN`Solver`Private`Realize[node["Root"], planSolution];
+    Row[{
+        Grid[{
+            {Graph[resultGraph, Options[originGraph, EdgeStyle], ImageSize -> 400], SpanFromLeft},
+            {"D-Flips: ", Pane[Part[planSolution, 2], 300]},
+            {"C-Flips: ", Pane[Part[planSolution, 3], 300]}
+        }, Alignment -> {{Right, Center}, Baseline}],
+        Grid[
+            ({#1 \[UndirectedEdge] #2,
+                PropertyValue[{originGraph, #1 \[UndirectedEdge] #2}, EdgeStyle],
+                Chop[EuclideanDistance[
+                    PropertyValue[{resultGraph, #1}, VertexCoordinates], 
+                    PropertyValue[{resultGraph, #2}, VertexCoordinates]
+                ] - EuclideanDistance[
+                    PropertyValue[{originGraph, #1}, VertexCoordinates], 
+                    PropertyValue[{originGraph, #2}, VertexCoordinates]
+                ]],
+                Row[{(Chop[EuclideanDistance[
+                    PropertyValue[{resultGraph, #1}, VertexCoordinates], 
+                    PropertyValue[{resultGraph, #2}, VertexCoordinates]
+                ] / EuclideanDistance[
+                    PropertyValue[{originGraph, #1}, VertexCoordinates], 
+                    PropertyValue[{originGraph, #2}, VertexCoordinates]
+                ]] - 1) * 100, "%"}]
+            }&) @@@ Select[EdgeList[originGraph], PropertyValue[{originGraph, #}, "EdgeType"] =!= "Partial"&],
+            Alignment -> {{"\[UndirectedEdge]", Center, ".", "."}, Baseline}
+        ]
+    }]
 ]
 
 

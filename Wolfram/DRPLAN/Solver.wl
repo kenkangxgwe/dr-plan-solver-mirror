@@ -30,7 +30,9 @@ SolveDRPlan::usage = "SolveDRPlan[node_DRNode] solves a DRPlan by passing in the
 SolveNode::usage = "SolveNode[node_DRNode] solves the input node and its sub-nodes and returns all solutions.
 SolveNode[node_DRNode, dFlip:(All | _List)] solves the node only for specified D-flip."
 InterpolatingFunctionGroup::usage = "A group of interpolating functions for smoothing purpose."
+ToPlanSolution::usage = "ToPlanSolution[nodeSolution_NodeSolution] turns a node solution for the root node to a plan solution."
 NodeSolution::usage = "An object that contains the information for a node solution."
+PlanSolution::usage = "An object that contains the information for a plan solution."
 
 
 Begin["`Private`"]
@@ -83,51 +85,255 @@ PrintProgress[node_DRNode] := (
 (*Realize*)
 
 
-DRNode[objID_]["Realize"[]] := Module[
+Realize[node_DRNode] := Module[
     {
-        obj = DRNode[objID], cayleyLength, coordsList, tmpSubGraph
+        cayleyLength
     },
 
-    cayleyLength = <| # -> PropertyValue[{obj["Root"]["Graph"], #}, EdgeWeight]& /@ obj["AllCayley"] |>;
-    obj["Realize"[PlanSolution[cayleyLength, <||>]]]
+    cayleyLength = <| # -> PropertyValue[{node["Root"]["Graph"], #}, EdgeWeight]& /@ node["AllCayley"] |>;
+    Realize[node, PlanSolution[cayleyLength, <||>]]
 ]
 
-DRNode[objID_]["Realize"[PlanSolution[cayleyLength_Association, cFlip_Association]]] := Module[
+Realize[node_DRNode, PlanSolution[cayleyLength_Association, _, cFlip_Association]] := Module[
     {
-        obj = DRNode[objID], coordsList, tmpSubGraph
+        coordsList
     },
 
     Check[
-        coordsList = calcCoords[obj, VertexList[obj["Graph"]], cayleyLength, cFlip];
-        Subgraph[obj["Graph"], Keys[coordsList], VertexCoordinates -> Normal@coordsList, VertexLabels->"Name"],
+        coordsList = calcCoords[node, VertexList[node["Graph"]], cayleyLength, cFlip];
+        Subgraph[node["Graph"], Keys[coordsList], VertexCoordinates -> Normal@coordsList, VertexLabels->"Name"],
         $Failed
     ]
 ]
 
 
-(* ::Subsection:: *)
-(*refineInterval*)
-
-
-refineInterval[node_DRNode, TargetCayley_, CayleyLength_Association] := Module[
+SimilarPlanQ[
+    PlanSolution[
+        cayleyLength1_Association,
+        _,
+        cFlip1_Association
+    ], PlanSolution[
+        cayleyLength2_Association,
+        _,
+        cFlip2_Association
+    ],
+    o: OptionsPattern[]
+] := Module[
     {
-        graph = node["Graph"], rootgraph = node["Root"]["Graph"], targetedge,
-        v1, v2, commonvertex, d1, d2
+        cayleys, maxCayley
     },
 
-    targetedge = EdgeList[rootgraph][[TargetCayley]];
-    {v1, v2} = List @@ targetedge;
+    If[cFlip1 =!= cFlip2,
+        Return[False]
+    ];
 
-    commonvertex = Min[AdjacencyList[graph, v1] ~Intersection~ AdjacencyList[graph, v2]];
-    {d1, d2} = Function[{edge},
-        If[PropertyValue[{rootgraph, edge}, "EdgeType"] == "Add",
-           CayleyLength[EdgeIndex[rootgraph, edge]] // Replace[_Missing :> (Echo@CayleyLength; Abort[])],
-           PropertyValue[{rootgraph, edge}, EdgeWeight]
-        ]
-    ] /@ {UndirectedEdge[commonvertex, v1], UndirectedEdge[commonvertex, v2]};
+    cayleys = Keys[cayleyLength1];
+    If[cayleys =!= Keys[cayleyLength2],
+        Return[False]
+    ];
 
-    Interval[{Abs[d1 - d2], d1 + d2}]
+    {maxDiff, maxCayley} = Table[
+        {Abs[cayleyLength1[cayley] - cayleyLength2[cayley]], cayley},
+        {cayley, cayleys}
+    ] // MaximalBy[First] // First;
+
+    maxDiff / Max[cayleyLength1[maxCayley], cayleyLength2[maxCayley]]
+
 ]
+
+
+(* ::Subsection:: *)
+(*Immutable Type Definition*)
+
+
+DeclareType[DRNode, <|
+    "Root" -> _Association,
+    "Graph" -> _Graph,
+    "FreeCayley" -> _List,
+    "TargetDrop" -> _Integer,
+    "TargetCayley" -> _Integer
+|>]
+
+
+(*
+    This function stores the subvalues of the DRNode[$id] into a immutable association
+    in order to pass it for parallel solving.
+    It should has the same interface as the DRNode[$id].
+    If the solving algorithm changes, do not forget to add those values needed here.
+*)
+PersistDRNode[node_DRNode] := (
+    DRNode[<|
+        "Root" -> <|"Graph" -> node["Root"]["Graph"]|>,
+        "Graph" -> node["Graph"],
+        "FreeCayley" -> node["FreeCayley"],
+        "TargetDrop" -> node["TargetDrop"],
+        "TargetCayley" -> node["TargetCayley"]
+    |>]
+)
+
+
+(* ::Subsection:: *)
+(*Solving*)
+
+
+(* See options in SolveNode *)
+Options[SolveDRPlan] = {
+    "Reevaluate" -> False,
+    "AllCFlip" -> False
+}
+SolveDRPlan[node_DRNode, o:OptionsPattern[]] := (
+    ToPlanSolution /@ SolveNode[node, All, o]
+)
+
+ToPlanSolution[nodeSolution_NodeSolution] := Module[
+    {
+      solution, cFlip
+    },
+    solution = Part[nodeSolution, 1];
+    PlanSolution[(#[{}]&) /@ solution, Part[nodeSolution, 3], Part[nodeSolution, 4]]
+]
+
+(*
+    Options:
+    - "Reevaluate":
+        - False: use cached;
+        - True: re-evaluate current node;
+        - All: re-evaluate current and all sub-nodes;
+    - "AllCFlip":
+        - False: only solve for dropped flips;
+        - True: solve both dropped and cayley flips;
+    - "SowSampleList":
+        - False: do not collect sample points for visualization usage, for acceleration purpose;
+        - True: the sample data are collected to $sampleLists;
+    - "Parallelize":
+        - False: do not leverage multiple cores;
+        - True: leverage multiple cores for parallel computing;
+*)
+Options[SolveNode] = {
+    "Reevaluate" -> False,
+    "AllCFlip" -> False,
+    "SowSampleList" -> False,
+    "Parallelize" -> False
+}
+
+SolveNode::invtdf = "Invalid D-flip specified: `1`."
+SolveNode[node_DRNode, o:OptionsPattern[]] := SolveNode[node, All, o]
+(*
+    Caveat: If you specified the D-flip, be careful that the index running among all the D-flips and (if applicable) C-flips.
+    For example, let's say there are solutions in D-flip {1, {1}, {1}} and {1, {2}, {1}}.
+    If you now specified D-flip to be {2, All, All}, it will return {1, {2}, {1}} because it is the second D-flip of the two above.
+*)
+SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
+    {
+        cayleyVertex, rootgraph,
+        nodeSolutions, curDFlip, subDFlips,
+        nodeI, solutions,
+        (* options *)
+        reevaluate, allCFlip, sowSampleList, parallelize,
+        subReevaluate
+    },
+
+    {reevaluate, allCFlip, sowSampleList, parallelize} =
+        OptionValue[SolveNode, {o}, {"Reevaluate", "AllCFlip", "SowSampleList", "Parallelize"}];
+
+    $SowSampleList = sowSampleList;
+
+    (* Print["Solving " <> ToString[node]]; *)
+    If[node["IsCayleyNode"],
+        rootgraph = node["Root"]["Graph"];
+        cayleyVertex = Max @@ (Part[
+            EdgeList[rootgraph],
+            node["TargetCayley"]
+        ]);
+        UnEcho[#, "nodeSolutions", (ToString/@#)&]& @ {
+            NodeSolution[
+                <|node["TargetCayley"] -> (First @* (Curry[Through[#1[#2]]&, 2][Lookup /@ node["FreeCayley"]]))|>, (* identity function *)
+                <|node["TargetCayley"] -> node["Interval"]|>, (* domain *)
+                {1}, (* D-flip index *)
+                <||> (* overwriting the C-flip*)
+            ],
+            If[allCFlip,
+                NodeSolution[
+                    <|node["TargetCayley"] -> (First @* (Curry[Through[#1[#2]]&, 2][Lookup /@ node["FreeCayley"]]))|>, (* identity function *)
+                    <|node["TargetCayley"] -> node["Interval"]|>, (* domain *)
+                    {1}, (* D-flip index *)
+                    <|cayleyVertex -> !PropertyValue[{rootgraph, cayleyVertex}, "Flip"]|> (* overwriting the C-flip*)
+                ],
+                Nothing
+            ]
+        },
+
+        (* Memoization *)
+        If[reevaluate === False && !MissingQ[node["Solutions"]],
+            Return[node["Solutions"]]
+        ];
+
+        subReevaluate = If[reevaluate === All, All, False]; (* Unless All, do not re-evaluate the sub-nodes *)
+
+        {curDFlip, subDFlips} = Replace[dFlip, {
+            (* solve for all D-flips *)
+            All :> {All, Table[All, Length[node["SubNodes"]]]},
+            (* solve for the specified D-flips for current node, based on specifed sub-D-flips *)
+            (* if not enough sub-D-flips are specified, the remainings will based on all sub-D-flips *)
+            {cur_, subs:(All|_List)...} :> {{cur}, PadRight[{subs}, Length[node["SubNodes"]], All]},
+            (* otherwise, invalid D-flips specifed *)
+            _ :> (Message[SolveNode::invdf, dFlip]; Abort[])
+        }];
+
+        nodeSolutions = mergeNodeSolution @@ MapThread[SolveNode[#1, #2,
+            "Reevaluate" -> subReevaluate,
+            "AllCFlip" -> allCFlip
+        ]&, {node["SubNodes"], subDFlips}];
+
+        (* Prepare Immutable data for parallelism*)
+        nodeI = PersistDRNode[node];
+
+        (* Solve a flip *)
+        {solutions, $sampleLists} = If[parallelize, 
+            ParallelTable[
+                Reap[SolveDFlip[nodeI, nodeSolution]],
+                {nodeSolution, nodeSolutions},
+                DistributedContexts -> {"DRPLAN`Core`", "DRPLAN`Solver`", "DataType`"},
+                Method -> "FinestGrained"
+            ],
+            Table[
+                Reap[SolveDFlip[nodeI, nodeSolution]],
+                {nodeSolution, nodeSolutions}
+            ]
+        ] // Transpose;
+        $sampleLists = Flatten[$sampleLists, 1];
+
+        (* Memoization *)
+        node["Solutions"] = Part[Flatten[solutions], curDFlip];
+        PrintProgress[node];
+        node["Solutions"]
+    ]
+]
+
+
+mergeNodeSolution::diftf = "Different T-Flips are specified for the same cayley edge."
+mergeNodeSolution[nodeSolutions:PatternSequence[{___NodeSolution}..]] := 
+    Outer[mergeNodeSolution, nodeSolutions] // Flatten
+mergeNodeSolution[nodeSolutions__NodeSolution] := With[
+    {
+        nodeSolutionList = List @@@ {nodeSolutions}
+    },
+
+    NodeSolution[
+        Part[nodeSolutionList, All, 1]
+        // Merge[First],
+        Part[nodeSolutionList, All, 2]
+        // Merge[Apply[IntervalIntersection]],
+        Part[nodeSolutionList, All, 3]
+        // Prepend[Missing["DFlipNotSolved"]],
+        Part[nodeSolutionList, All, 4]
+        // Merge[If[SameQ@@#, First[#], Message[mergeNodeSolution::diftf]; Abort[]]&]
+    ]
+]
+
+
+(* ::section:: *)
+(*Solve Flip*)
 
 
 (* ::Subsection:: *)
@@ -243,188 +449,6 @@ calcCoordsImpl[node_DRNode, CayleyLength_Association, CayleyFlip_Association][
 ] // Replace[Return[val_] :> val] // calcCoordsImpl[node, CayleyLength, CayleyFlip]
 
 
-(* ::Subsection:: *)
-(*Immutable Type Definition*)
-
-
-DeclareType[DRNode, <|
-    "Root" -> _Association,
-    "Graph" -> _Graph,
-    "FreeCayley" -> _List,
-    "TargetDrop" -> _Integer,
-    "TargetCayley" -> _Integer
-|>]
-
-
-(*
-    This function stores the subvalues of the DRNode[$id] into a immutable association
-    in order to pass it for parallel solving.
-    It should has the same interface as the DRNode[$id].
-    If the solving algorithm changes, do not forget to add those values needed here.
-*)
-PersistDRNode[node_DRNode] := (
-    DRNode[<|
-        "Root" -> <|"Graph" -> node["Root"]["Graph"]|>,
-        "Graph" -> node["Graph"],
-        "FreeCayley" -> node["FreeCayley"],
-        "TargetDrop" -> node["TargetDrop"],
-        "TargetCayley" -> node["TargetCayley"]
-    |>]
-)
-
-
-(* ::Subsection:: *)
-(*Solving*)
-
-
-(* See options in SolveNode *)
-Options[SolveDRPlan] = {
-    "Reevaluate" -> False,
-    "AllCFlip" -> False
-}
-SolveDRPlan[node_DRNode, o:OptionsPattern[]] := (
-    getPlanSolution /@ SolveNode[node, All, o]
-)
-
-getPlanSolution[nodeSolution_NodeSolution] := Module[
-    {
-      solution, cFlip
-    },
-    solution = Part[nodeSolution, 1];
-    cFlip = Part[nodeSolution, 4];
-    PlanSolution[(#[{}]&) /@ solution, cFlip]
-]
-
-Options[SolveNode] = {
-    (* False to use cached *)
-    (* True to re-evaluate current node *)
-    (* All to re-evaluate current and all sub- nodes *)
-    "Reevaluate" -> False,
-    (* Try all cayley flips *)
-    "AllCFlip" -> False,
-    "SowSampleList" -> False
-}
-
-SolveNode::invtdf = "Invalid D-flip specified: `1`."
-SolveNode[node_DRNode, o:OptionsPattern[]] := SolveNode[node, All, o]
-(*
-    Caveat: If you specified the D-flip, be careful that the index running among all the D-flips and (if applicable) C-flips.
-    For example, let's say there are solutions in D-flip {1, {1}, {1}} and {1, {2}, {1}}.
-    If you now specified D-flip to be {2, All, All}, it will return {1, {2}, {1}} because it is the second D-flip of the two above.
-*)
-SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
-    {
-        cayleyVertex, rootgraph,
-        nodeSolutions, curDFlip, subDFlips, 
-        nodeI, solutions,
-        (* options *)
-        reevaluate, allCFlip,
-        subReevaluate
-    },
-
-    {reevaluate, allCFlip, sowSampleList} = OptionValue[SolveNode, {o}, {"Reevaluate", "AllCFlip", "SowSampleList"}];
-
-    $SowSampleList = sowSampleList;
-
-    (* Print["Solving " <> ToString[node]]; *)
-    If[node["IsCayleyNode"],
-        rootgraph = node["Root"]["Graph"];
-        cayleyVertex = Max @@ (Part[
-            EdgeList[rootgraph],
-            node["TargetCayley"]
-        ]);
-        UnEcho[#, "nodeSolutions", (ToString/@#)&]& @ {
-            NodeSolution[
-                <|node["TargetCayley"] -> (First @* (Curry[Through[#1[#2]]&, 2][Lookup /@ node["FreeCayley"]]))|>, (* identity function *)
-                <|node["TargetCayley"] -> node["Interval"]|>, (* domain *)
-                {1}, (* D-flip index *)
-                <||> (* overwriting the C-flip*)
-            ],
-            If[allCFlip,
-                NodeSolution[
-                    <|node["TargetCayley"] -> (First @* (Curry[Through[#1[#2]]&, 2][Lookup /@ node["FreeCayley"]]))|>, (* identity function *)
-                    <|node["TargetCayley"] -> node["Interval"]|>, (* domain *)
-                    {1}, (* D-flip index *)
-                    <|cayleyVertex -> !PropertyValue[{rootgraph, cayleyVertex}, "Flip"]|> (* overwriting the C-flip*)
-                ],
-                Nothing
-            ]
-        },
-
-        (* Memoization *)
-        If[reevaluate === False && !MissingQ[node["Solutions"]],
-            Return[node["Solutions"]]
-        ];
-
-        subReevaluate = If[reevaluate === All, All, False]; (* Unless All, do not re-evaluate the sub-nodes *)
-
-        {curDFlip, subDFlips} = Replace[dFlip, {
-            (* solve for all D-flips *)
-            All :> {All, Table[All, Length[node["SubNodes"]]]},
-            (* solve for the specified D-flips for current node, based on specifed sub-D-flips *)
-            (* if not enough sub-D-flips are specified, the remainings will based on all sub-D-flips *)
-            {cur_, subs:(All|_List)...} :> {{cur}, PadRight[{subs}, Length[node["SubNodes"]], All]},
-            (* otherwise, invalid D-flips specifed *)
-            _ :> (Message[SolveNode::invdf, dFlip]; Abort[])
-        }];
-
-        nodeSolutions = mergeNodeSolution @@ MapThread[SolveNode[#1, #2,
-            "Reevaluate" -> subReevaluate,
-            "AllCFlip" -> allCFlip
-        ]&, {node["SubNodes"], subDFlips}];
-
-        (* Prepare Immutable data for parallelism*)
-        nodeI = PersistDRNode[node];
-
-        (* Memoization *)
-        (* {solutions, $sampleLists} = Map[
-            ((Echo[First[#1]]; Reap[SolveDFlip[node, Last[#1]]])&),
-            Transpose[{Range[1], Take[nodeSolutions, 1]}]
-        ] // Transpose; *)
-        (* {solutions, $sampleLists} = ParallelMap[
-            ((Echo[First[#1]]; Reap[SolveDFlip[nodeI, Last[#1]]])&),
-            Transpose[{Range[4], Take[nodeSolutions, 4]}],
-            DistributedContexts -> {"DRPLAN`Core`", "DRPLAN`Solver`", "DataType`"}
-        ] // Transpose; *)
-        {solutions, $sampleLists} = ParallelTable[
-            Reap[SolveDFlip[nodeI, nodeSolution]],
-            {nodeSolution, nodeSolutions},
-            DistributedContexts -> {"DRPLAN`Core`", "DRPLAN`Solver`", "DataType`"},
-            Method -> "FinestGrained"
-        ] // Transpose;
-        $sampleLists = Flatten[$sampleLists, 1];
-        node["Solutions"] = Part[Flatten[solutions], curDFlip];
-        PrintProgress[node];
-        node["Solutions"]
-    ]
-]
-
-
-mergeNodeSolution::diftf = "Different T-Flips are specified for the same cayley edge."
-mergeNodeSolution[nodeSolutions:PatternSequence[{___NodeSolution}..]] := 
-    Outer[mergeNodeSolution, nodeSolutions] // Flatten
-mergeNodeSolution[nodeSolutions__NodeSolution] := With[
-    {
-        nodeSolutionList = List @@@ {nodeSolutions}
-    },
-
-    NodeSolution[
-        Part[nodeSolutionList, All, 1]
-        // Merge[First],
-        Part[nodeSolutionList, All, 2]
-        // Merge[Apply[IntervalIntersection]],
-        Part[nodeSolutionList, All, 3]
-        // Prepend[Missing["DFlipNotSolved"]],
-        Part[nodeSolutionList, All, 4]
-        // Merge[If[SameQ@@#, First[#], Message[mergeNodeSolution::diftf]; Abort[]]&]
-    ]
-]
-
-
-(* ::Subsection:: *)
-(*solve node*)
-
-
 dropLength[node_DRNode] := With[
 	{
 		rootgraph = node["Root"]["Graph"]
@@ -453,6 +477,10 @@ dropDiff[node_DRNode, coordinates_Association, dropOffset:_?NumericQ:1] := (
         - dropLength[node] * dropOffset
     ]
 )
+
+
+(* ::Subsection:: *)
+(*Parameters*)
 
 
 $SampleDivisor = 2^17 (* the minimal distance between samples should be 1/$SampleDivisor *)
@@ -494,6 +522,35 @@ getSamples[interval_Interval] := Module[
 
     SparseArray[(sampleIndices + 1) -> left + (right - left) * sampleIndices / $SampleDivisor, $SampleDivisor + 1, Missing["NotSampled"]]
 ]
+
+
+(* ::Subsection:: *)
+(*refineInterval*)
+
+
+refineInterval[node_DRNode, TargetCayley_, CayleyLength_Association] := Module[
+    {
+        graph = node["Graph"], rootgraph = node["Root"]["Graph"], targetedge,
+        v1, v2, commonvertex, d1, d2
+    },
+
+    targetedge = EdgeList[rootgraph][[TargetCayley]];
+    {v1, v2} = List @@ targetedge;
+
+    commonvertex = Min[AdjacencyList[graph, v1] ~Intersection~ AdjacencyList[graph, v2]];
+    {d1, d2} = Function[{edge},
+        If[PropertyValue[{rootgraph, edge}, "EdgeType"] == "Add",
+           CayleyLength[EdgeIndex[rootgraph, edge]] // Replace[_Missing :> (Echo@CayleyLength; Abort[])],
+           PropertyValue[{rootgraph, edge}, EdgeWeight]
+        ]
+    ] /@ {UndirectedEdge[commonvertex, v1], UndirectedEdge[commonvertex, v2]};
+
+    Interval[{Abs[d1 - d2], d1 + d2}]
+]
+
+
+(* ::Subsection:: *)
+(*Solve D-Flip*)
 
 
 SolveDFlip::dupz = "`1` zeros are found.";
@@ -568,7 +625,11 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
     (* Echo@threadZeros[Identity@@@Select[finalResults, Not@*MissingQ]]; *)
     (* Abort[]; *)
     MapIndexed[
-        interpZeros[node, nodeSolution, Select[finalSamples, Not@*MissingQ], #1, First[#2]]&,
+        Check[
+            interpZeros[node, nodeSolution, Select[finalSamples, Not@*MissingQ], #1, First[#2]],
+            Nothing,
+            {Interpolation::inddp}
+        ]&,
         (* see Thread.wl *)
         threadZeros[Identity@@@Select[finalResults, Not@*MissingQ]]
     ]
@@ -650,7 +711,7 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
 
     (* sampleLists = sampleList; *)
 
-    (* To draw 3D points plot, uncomment the following line*)
+    (* To draw 3D points plot, uncomment the following line *)
     If[$SowSampleList && Length[node["FreeCayley"]] > 0,
         sampleList // ArrayRules // Most
         // Cases[({pos_} -> Pair[x_, y_]) :> {freeSample[First@node["FreeCayley"]], x, y}]
