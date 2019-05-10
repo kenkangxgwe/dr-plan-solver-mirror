@@ -1,0 +1,33 @@
+strict graph  {
+00 [pos="-0.091094, -1.667969!"];
+01 [pos="1.442502, 0.74!"];
+02 [pos="-1.464142, 0.8!"];
+03 [pos="-0.816658, -0.429914!"];
+04 [pos="0.00751, 0.744808!"];
+05 [pos=" 0.720841, -0.500335!"];
+06 [pos="-0.031276, 0.721771!"];
+07 [pos=" 0.618311, -0.420584!"];
+08 [pos="-0.815458, -0.480013!"];
+09 [pos="-0.815458, -0.480013!"];
+
+00--01 [color="black", penwidth=1];
+00--02 [color="black", penwidth=1];
+00--03 [color="black", penwidth=1];
+00--07 [color="black", penwidth=1];
+01--02 [color="black", penwidth=1];
+01--03 [color="green", penwidth=1];
+01--04 [color="black", penwidth=1];
+01--05 [color="black", penwidth=1];
+03--04 [color="black", penwidth=1];
+03--07 [color="black", penwidth=1];
+03--08 [color="green", penwidth=1];
+04--05 [color="black", penwidth=1];
+04--06 [color="green", penwidth=1];
+05--06 [color="black", penwidth=1];
+07--08 [color="black", penwidth=1];
+07--09 [color="black", penwidth=1];
+08--09 [color="black", penwidth=1];
+02--06 [color="red", penwidth=1];
+06--08 [color="red", penwidth=1];
+02--09 [color="red", penwidth=1];
+}

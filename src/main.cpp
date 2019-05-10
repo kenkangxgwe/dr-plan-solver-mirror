@@ -16,8 +16,11 @@
  */
 
 #include "stdafx.h"
-#include "Tree.h"
+#include "Enumeration.hpp"
 #include "TwoTree.h"
+#include "Tree.h"
+
+#include <boost/program_options.hpp>
 
 /**
  *  A data structure to represent the ordering of (constraint, parameter)
@@ -93,7 +96,6 @@ int main(int argc, char *argv[])
     std::string inputFile = vm["input-file"].as<std::string>();
     TwoTree tt(inputFile, useLengthinfo);
     tt.print_graph();
-    tt.generateDRplan();
     tt.printDRplan();
 
     /**
@@ -127,7 +129,6 @@ int main(int argc, char *argv[])
     } else {
         std::cout << "Use default value: 0." << std::endl;
     }
-    Tree drplan(&tt.getRoot(), sampleNum, maxOffset);
 //    std::vector<int> flipIdx({3, 5, 6}); // HexTrig
 //    std::vector<int> flipIdx({3, 5, 6, 9, 12}); // zig-zag-3
 //    std::vector<unsigned> flipIdx({3, 5, 6, 9, 12, 13, 15, 16, 18}); // zig-zag-4
@@ -157,12 +158,22 @@ int main(int argc, char *argv[])
      */
     do {
         std::cout << std::endl << "Trying next flip:" << std::endl;
-        if(drplan.solveTree()) {
-            unsigned counter = 0;
-            for(const auto &solution : drplan.finalSolutionList) {
-                tt.realize(solution, std::to_string(counter++));
+        //Enumeration<void, double> drop_modification{{tt.dropped_num(), {{0.00/*, 0.05, -0.05*/}}}};
+        //for(auto drop_modifier = drop_modification.begin(); drop_modifier != drop_modification.end(); ++ drop_modifier) {
+            //auto new_length = drop_modification.at(drop_modifier);
+            //TwoTree new_tt{tt};
+            //new_tt.printDRplan();
+            //for(size_t drop_i = 0; drop_i < tt.dropped_num(); drop_i++) {
+            //    new_tt.changeDistanceBy(new_tt.getDroppedEdge(drop_i), 1.0 + new_length[drop_i]);
+            //}
+            Tree drplan(tt, sampleNum, maxOffset);
+            if(drplan.solveTree()) {
+                unsigned counter = 0;
+                for(const auto &solution : drplan.finalSolutionList) {
+                    tt.realize(solution, std::to_string(counter++));
+                }
             }
-        }
+        //}
         if(!enumerateAll) {
             break;
         }

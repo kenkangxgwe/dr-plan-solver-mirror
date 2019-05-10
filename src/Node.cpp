@@ -15,9 +15,11 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "stdafx.h"
+#include <TwoTree.h>
+
 #include "TwoTree.h"
 #include "TwoTreeUtils.h"
+#include "stdafx.h"
 
 using namespace boost;
 
@@ -27,47 +29,67 @@ using namespace boost;
 namespace DRPLAN
 {
 
-Node* Node::realize(std::unordered_map<unsigned, double> valMap)
+Node &TwoTree::get_node(graph_t &graph)
 {
-    TTGT &subG = reflex->graphRef;
-    TTGT const &rootG = subG.root();
-    if(num_edges(subG) < 3) {
+    return get_property(graph);
+}
+
+Node const &TwoTree::get_node(graph_t const &graph) const
+{
+    return get_property(graph);
+}
+
+Node &TwoTree::operator[](graph_t &graph)
+{
+    return get_node(graph);
+}
+
+Node const &TwoTree::operator[](graph_t const &graph) const
+{
+    return get_node(graph);
+}
+
+TwoTree& TwoTree::realize(graph_t &graph, std::unordered_map<unsigned, double> valMap)
+{
+    if(num_edges(graph) < 3) {
         throw ("Not enough vertices.");
     }
-    auto eIndexMap = get(edge_index_t(), rootG);
-    VerIter<TTGT> vi, vi_end;
-    tie(vi, vi_end) = vertices(subG);
-    subG[*vi].setXY(0, 0); ///< First vertex.
+    testSubgraph(graph, *this);
+    VerIter vi, vi_end;
+    tie(vi, vi_end) = vertices(graph);
+    graph[*vi].setXY(0, 0); ///< First vertex.
     ++vi;
-    subG[*vi].setXY(rootG[subG[*vi].pointReflex->e1].distance, 0); ///< Second vertex
+    graph[*vi].setXY(m_graph[edge_map[graph[*vi].e1]].distance, 0); ///< Second vertex
     ++vi;
     for(; vi != vi_end; ++vi) {
-        EdgeDesc<TTGT> const &e1 = subG[*vi].pointReflex->e1;
-        EdgeDesc<TTGT> const &e2 = subG[*vi].pointReflex->e2;
-        VerDesc<TTGT> v1, v2;
-        std::tie(v1, v2) = getSupportiveVertexPair(*vi, subG);
+        index_t const e1 = graph[*vi].e1;
+        index_t const e2 = graph[*vi].e2;
+        EdgeDesc ed1 = edge_map[graph[*vi].e1];
+        EdgeDesc ed2 = edge_map[graph[*vi].e2];
+        VerDesc v1 = getOppositeVertex(*vi, graph.global_to_local(ed1), m_graph);
+        VerDesc v2 = getOppositeVertex(*vi, graph.global_to_local(ed2), m_graph);
         double d1, d2;
-        if(rootG[e1].edge_type == EdgeType::ADDED) {
-            d1 = valMap[get(eIndexMap, e1)];
+        if(m_graph[ed1].edge_type == EdgeType::ADDED) {
+            d1 = valMap[e1];
         } else {
-            d1 = rootG[e1].distance;
+            d1 = m_graph[ed1].distance;
         }
-        if(rootG[e2].edge_type == EdgeType::ADDED) {
-            d2 = valMap[get(eIndexMap, e2)];
+        if(m_graph[ed2].edge_type == EdgeType::ADDED) {
+            d2 = valMap[e2];
         } else {
-            d2 = rootG[e2].distance;
+            d2 = m_graph[ed2].distance;
         }
 
-        if(Point::distance(subG[*vi], subG[v1]) == d1
-           && Point::distance(subG[*vi], subG[v2]) == d2) {
+        if(Point::distance(graph[*vi], graph[v1]) == d1
+           && Point::distance(graph[*vi], graph[v2]) == d2) {
             continue;
         }
 
-        double dx = subG[v1].x - subG[v2].x;
-        double dy = subG[v1].y - subG[v2].y;
+        double dx = graph[v1].x - graph[v2].x;
+        double dy = graph[v1].y - graph[v2].y;
         double d0 = sqrt(dx * dx + dy * dy);
-        double mx = (subG[v1].x + subG[v2].x) / 2;
-        double my = (subG[v1].y + subG[v2].y) / 2;
+        double mx = (graph[v1].x + graph[v2].x) / 2;
+        double my = (graph[v1].y + graph[v2].y) / 2;
         double dd = d1 - d2;
         double md = (d1 + d2) / 2;
         double delta = (d0 * d0 - dd * dd) * (md * md - d0 * d0 / 4);
@@ -79,173 +101,128 @@ Node* Node::realize(std::unordered_map<unsigned, double> valMap)
          * If dy < 0, then we choose the smaller x for CCW, and the larger x for CW.
          * If dx < 0, then we choose the larger y for CCW, and the smaller y for CW.
          */
-        int sign = (tt->flip[*vi]) ? 1 : -1;
+        int sign = (flip[*vi]) ? 1 : -1;
         double x = (-dd * md * dx - sign * dy * sqrt(delta)) / d0 / d0 + mx;
         double y = (-dd * md * dy + sign * dx * sqrt(delta)) / d0 / d0 + my;
-        subG[*vi].setXY(x, y);
+        graph[*vi].setXY(x, y);
     }
-    return this;
+    return (*this);
 }
 
-std::pair<double, double> Node::dropFlip()
+std::pair<double, double> TwoTree::getDropFlip(graph_t &graph)
 {
-    if(isCayleyNode) {
+    auto const &node = get_node(graph);
+    if(node.isCayleyNode) {
         throw ("This is a Cayley node.");
     }
-    TTGT &subG = reflex->graphRef;
-    auto v1 = source(reflex->droppedEdge, subG);
-    auto v2 = target(reflex->droppedEdge, subG);
-    auto v3 = source(reflex->flipEdge, subG);
-    auto v4 = target(reflex->flipEdge, subG);
+    auto v1 = source(edge_map[node.targetDrop], graph);
+    auto v2 = target(edge_map[node.targetDrop], graph);
+    auto v3 = source(edge_map[node.dropFlipEdge], graph);
+    auto v4 = target(edge_map[node.dropFlipEdge], graph);
     double sourceFlip, targetFlip;
-    sourceFlip = Point::CCW(subG[v1], subG[v2], subG[v3]);
-    targetFlip = Point::CCW(subG[v1], subG[v2], subG[v4]);
+    sourceFlip = Point::CCW(graph[v1], graph[v2], graph[v3]);
+    targetFlip = Point::CCW(graph[v1], graph[v2], graph[v4]);
 
     return std::make_pair(sourceFlip, targetFlip);
 }
 
-double Node::dropDiff()
+double TwoTree::dropDiff(graph_t &graph)
 {
-    if(isCayleyNode) {
+    auto const &node = get_node(graph);
+    if(node.isCayleyNode) {
         throw ("This is a Cayley node.");
     }
-    TTGT &subG = reflex->graphRef;
-    double actualLength = Point::distance(subG[source(reflex->droppedEdge, subG)],
-                                          subG[target(reflex->droppedEdge, subG)]);
+    double actualLength = Point::distance(graph[source(edge_map[node.targetDrop], graph)],
+                                          graph[target(edge_map[node.targetDrop], graph)]);
     //            if (isnan(res)){
     //                throw("The result is not a number.");
     //            }
-    return (actualLength - targetLength);
+    return (actualLength - node.targetLength);
 }
 
-/**
- * Calculates the interval of the Cayley edge.
- */
-void Node::calcInterval()
+std::pair<double, double> TwoTree::refineInterval(index_t targetCayley, std::unordered_map<unsigned, double> valMap)
 {
-    TTGT &subG = reflex->graphRef;
-    auto eIndexMap = get(edge_index_t(), subG);
-    EdgeIter<TTGT> ei;
-    ei = edges(subG).first;
-    TTGT &rootG = subG.root();
-    VerDesc<TTGT> vs = subG.local_to_global(source(*ei, subG));
-    VerDesc<TTGT> vt = subG.local_to_global(target(*ei, subG));
-    VerDesc<TTGT> va;
-    OutEdgeIter<TTGT> oe, oe_end;
-    std::unordered_map<VerDesc<TTGT>, EdgeDesc<TTGT>> veMap;
-    double lb = 0, ub = DBL_MAX;
-    for(tie(oe, oe_end) = out_edges(vs, rootG); oe != oe_end; ++oe) {
-        if(rootG[*oe].edge_type == EdgeType::DROPPED) {
-            continue;
-        }
-        va = target(*oe, rootG);
-        veMap[va] = *oe;
-    }
-    for(tie(oe, oe_end) = out_edges(vt, rootG); oe != oe_end; ++oe) {
-        if(rootG[*oe].edge_type == EdgeType::DROPPED) {
-            continue;
-        }
-        va = target(*oe, rootG);
-        if(veMap.count(va)) {
-            EdgeDesc<TTGT> e1 = veMap.at(va);
-            double tempLb = abs(rootG[e1].distance - rootG[*oe].distance);
-            double tempUb = rootG[e1].distance + rootG[*oe].distance;
-            lb = (lb > tempLb) ? lb : tempLb;
-            ub = (ub < tempUb) ? ub : tempUb;
-        }
-    }
-    interval.first = lb + Link::getEps();
-    interval.second = ub - Link::getEps();
-    targetCayley = get(eIndexMap, *ei);
-    freeCayley.push_back(targetCayley);
-    allCayley = freeCayley;
-}
-
-std::pair<double, double> Node::refineInterval(std::unordered_map<unsigned, double> valMap)
-{
-    TTGT &subG = reflex->graphRef;
-    TTGT &rootG = subG.root();
-    auto eIndexMap = get(edge_index_t(), rootG);
-    EdgeDesc<TTGT> et = subG.local_to_global(reflex->targetEdge);
-    VerDesc<TTGT> vt = findTargetVertex(et, rootG);
-    VerDesc<TTGT> v1, v2;
-    std::tie(v1, v2) = getSupportiveVertexPair(vt, rootG);
-    EdgeDesc<TTGT> e0 = findCommonEdge(v1, v2, rootG);
-    EdgeDesc<TTGT> e1;
-    if(et == rootG[vt].pointReflex->e1) {
-        e1 = rootG[vt].pointReflex->e2;
+    EdgeDesc et = edge_map[targetCayley];
+    VerDesc v0;
+    VerDesc v1 = source(edge_map[targetCayley], m_graph);
+    VerDesc v2 = target(edge_map[targetCayley], m_graph);
+    if(m_graph[v1].e1 == targetCayley) {
+        v0 = getOppositeVertex(v1, edge_map[m_graph[v1].e2], m_graph);
+    } else if(m_graph[v1].e2 == targetCayley) {
+        v0 = getOppositeVertex(v1, edge_map[m_graph[v1].e1], m_graph);
+    } else if(m_graph[v2].e1 == targetCayley) {
+        v0 = getOppositeVertex(v2, edge_map[m_graph[v2].e2], m_graph);
+    } else if(m_graph[v2].e2 == targetCayley){
+        v0 = getOppositeVertex(v2, edge_map[m_graph[v2].e1], m_graph);
     } else {
-        e1 = rootG[vt].pointReflex->e1;
+        throw("cannot find opposite vertex for target cayley edge");
     }
+    EdgeDesc e1 = findCommonEdge(v0, source(edge_map[targetCayley], m_graph), m_graph);
+    EdgeDesc e2 = findCommonEdge(v0, target(edge_map[targetCayley], m_graph), m_graph);
     double d0, d1;
-    if(rootG[e0].edge_type == EdgeType::ADDED) {
-        d0 = valMap[get(eIndexMap, e0)];
+    auto eIndexMap = get(edge_index_t(), m_graph);
+    if(m_graph[e1].edge_type == EdgeType::ADDED) {
+        d0 = valMap[get(eIndexMap, e1)];
     } else {
-        d0 = rootG[e0].distance;
+        d0 = m_graph[e1].distance;
     }
-    if(rootG[e1].edge_type == EdgeType::ADDED) {
-        d1 = valMap[get(eIndexMap, e1)];
+    if(m_graph[e2].edge_type == EdgeType::ADDED) {
+        d1 = valMap[get(eIndexMap, e2)];
     } else {
-        d1 = rootG[e1].distance;
+        d1 = m_graph[e2].distance;
     }
 
     return std::make_pair(abs(d0 - d1) + Link::getEps(), d0 + d1 - Link::getEps());
 }
 
-
-void Node::generateDRplan()
+void TwoTree::generateDRplan(graph_t &graph)
 {
-    auto GraphBundle = boost::local_property<boost::graph_bundle_t>(boost::graph_bundle);
-    TTGT &subG = reflex->graphRef;
-    isCayleyNode = num_edges(subG) == 1;
-    if(isCayleyNode) {
-        //calcInterval();
-        TTGT &rootG = subG.root();
-        auto eIndexMap = get(edge_index_t(), rootG);
-        EdgeDesc<TTGT> ei = subG.local_to_global(*(edges(subG).first));
-        interval.first = rootG[ei].interval.first + Link::getEps();
-        interval.second = rootG[ei].interval.second - Link::getEps();
-        targetCayley = get(eIndexMap, ei);
-        freeCayley.push_back(targetCayley);
-        allCayley = freeCayley;
+    auto &node = get_node(graph);
+    node.isCayleyNode = num_edges(graph) == 1;
+    if(node.isCayleyNode) {
+        auto eIndexMap = get(edge_index_t(), graph);
+        auto edi = *(edges(graph).first);
+        index_t ei = get(eIndexMap, edi);
+        node.interval.first = graph[edi].interval.first + Link::getEps();
+        node.interval.second = graph[edi].interval.second - Link::getEps();
+        node.targetCayley = ei;
+        node.freeCayley.push_back(node.targetCayley);
+        node.allCayley = node.freeCayley;
         return;
     }
 
     /**
      * Finds the subnodes.
      */
-    auto vIndexMap = get(vertex_index_t(), subG);
-    auto eIndexMap = get(edge_index_t(), subG);
-    EdgeIter<TTGT> ei_start, ei, ei_end;
-    tie(ei_start, ei_end) = edges(subG);
+    auto vIndexMap = get(vertex_index_t(), graph);
+    auto eIndexMap = get(edge_index_t(), graph);
+    EdgeIter ei_start, ei, ei_end;
+    tie(ei_start, ei_end) = edges(graph);
     ei = ei_end;
-    VerIter<TTGT> v1 = vertices(subG).first;
+    VerIter v1 = vertices(graph).first;
     unsigned dropCounter = 0;
     /**
      * Finds sub DR-Nodes.
      */
     do{
         --ei;
-        if(subG[*ei].edge_type != EdgeType::DROPPED) {
+        if(graph[*ei].edge_type != EdgeType::DROPPED) {
             continue;
         }
         dropCounter++;
         if(dropCounter == 1) {
-            targetDrop = get(eIndexMap, *ei);
-            targetLength = subG[*ei].distance;
-            reflex->droppedEdge = *ei;
+            node.targetDrop = get(eIndexMap, *ei);
+            node.targetLength = graph[*ei].distance;
         } else {
-            unsigned vs = (unsigned)get(vIndexMap, source(*ei, subG));
-            unsigned vt = (unsigned)get(vIndexMap, target(*ei, subG));
-            TTGT &subNode = subG.create_subgraph(v1, v1 + (vs > vt ? vs : vt) + 1);
-            subNodes.push_back(&subNode[GraphBundle]);
-            subNode[GraphBundle].reflex = new Reflex(subNode);
-            subNode[GraphBundle].tt = tt;
-            subNode[GraphBundle].generateDRplan();
-            std::vector<unsigned> subCayley = subNode[GraphBundle].freeCayley;
-            freeCayley.insert(freeCayley.end(), subCayley.begin(), subCayley.end());
-            subCayley = subNode[GraphBundle].allCayley;
-            allCayley.insert(allCayley.end(), subCayley.begin(), subCayley.end());
+            unsigned vs = (unsigned)get(vIndexMap, source(*ei, graph));
+            unsigned vt = (unsigned)get(vIndexMap, target(*ei, graph));
+            graph_t &sub_graph = graph.create_subgraph(v1, v1 + (vs > vt ? vs : vt) + 1);
+            auto &sub_node = get_node(sub_graph);
+            generateDRplan(sub_graph);
+            std::vector<index_t> sub_cayley = sub_node.freeCayley;
+            node.freeCayley.insert(node.freeCayley.end(), sub_cayley.begin(), sub_cayley.end());
+            sub_cayley = sub_node.allCayley;
+            node.allCayley.insert(node.allCayley.end(), sub_cayley.begin(), sub_cayley.end());
             break;
         }
     } while(ei != ei_start);
@@ -254,7 +231,7 @@ void Node::generateDRplan()
      */
     unsigned addCounter = 0;
     do {
-        if(subG[*ei].edge_type != EdgeType::ADDED) {
+        if(graph[*ei].edge_type != EdgeType::ADDED) {
             continue;
         }
         addCounter++;
@@ -262,79 +239,69 @@ void Node::generateDRplan()
          * Always solves for the last Cayley edge for the current node.
          */
         if(addCounter > 1) {
-            freeCayley.push_back(targetCayley);
+            node.freeCayley.push_back(node.targetCayley);
         }
-        targetCayley = get(eIndexMap, *ei);
-        allCayley.push_back(targetCayley);
-        reflex->targetEdge = *ei;
+        node.targetCayley = get(eIndexMap, *ei);
+        node.allCayley.push_back(node.targetCayley);
 
-        TTGT &cayleyNode = subG.create_subgraph();
-        add_vertex(source(*ei, subG), cayleyNode);
-        add_vertex(target(*ei, subG), cayleyNode);
-        subNodes.push_back(&cayleyNode[GraphBundle]);
-        cayleyNode[GraphBundle].reflex = new Reflex(cayleyNode);
-        cayleyNode[GraphBundle].tt = tt;
-        cayleyNode[GraphBundle].generateDRplan();
+        graph_t &cayley_graph = graph.create_subgraph();
+        add_vertex(source(*ei, graph), cayley_graph);
+        add_vertex(target(*ei, graph), cayley_graph);
+        generateDRplan(cayley_graph);
     } while(++ei != ei_end);
     if(!addCounter) {
-        targetCayley = freeCayley.back();
-        freeCayley.pop_back();
-        /**
-         * Retrieves target edge iterator
-         */
-        ei = ei_start;
-        do {
-            if(get(eIndexMap, *ei) == targetCayley) {
-                reflex->targetEdge = *ei;
-                break;
-            }
-        } while(++ei != ei_end);
+        node.targetCayley = node.freeCayley.back();
+        node.freeCayley.pop_back();
     }
-    findFlip();
+    findFlip(graph);
 }
 
-void Node::findFlip()
+
+void TwoTree::findFlip(graph_t &graph)
 {
-    TTGT &subG = reflex->graphRef;
-    auto d1 = source(reflex->droppedEdge, subG);
-    auto d2 = target(reflex->droppedEdge, subG);
-    auto t1 = source(reflex->targetEdge, subG);
-    auto t2 = target(reflex->targetEdge, subG);
+    auto &node = get_node(graph);
+    auto d1 = source(edge_map[node.targetDrop], m_graph);
+    auto d2 = target(edge_map[node.targetDrop], m_graph);
+    auto t1 = source(edge_map[node.targetCayley], m_graph);
+    auto t2 = target(edge_map[node.targetCayley], m_graph);
     if(t1 == d1 || t1 == d2) {
         auto tf = t2;
         t2 = t1;
         t1 = tf;
     } else if(t2 != d1 && t2 != d2) {
-        reflex->flipEdge = reflex->targetEdge;
+        node.dropFlipEdge = node.targetCayley;
     }
-    OutEdgeIter<TTGT> eo, eo_end;
-    std::unordered_map<VerDesc<TTGT>, EdgeDesc<TTGT>> veMap;
-    std::tie(eo, eo_end) = out_edges(t1, subG);
+    OutEdgeIter eo, eo_end;
+    std::unordered_map<VerDesc, EdgeDesc> veMap;
+    std::tie(eo, eo_end) = out_edges(t1, m_graph);
     for(; eo != eo_end; ++eo) {
-        auto vt = target(*eo, subG);
+        auto vt = target(*eo, m_graph);
         if(vt < t2) {
             veMap[vt] = *eo;
         }
     }
-    AdjVerIter<TTGT> va, va_end;
-    std::tie(va, va_end) = adjacent_vertices(t2, subG);
+    AdjVerIter va, va_end;
+    auto eIndexMap = get(edge_index_t(), m_graph);
+    std::tie(va, va_end) = adjacent_vertices(t2, m_graph);
     for(; va != va_end; ++va) {
         if(veMap.count(*va)) {
-            reflex->flipEdge = veMap.at(*va);
+            node.dropFlipEdge = get(eIndexMap, veMap.at(*va));
             break;
         }
     }
 }
 
-std::string Node::toString() const
+std::string TwoTree::toString(graph_t const &graph) const
 {
-    return "tv" + std::to_string(targetCayley);
+    auto const &node = get_node(graph);
+    return "tv" + std::to_string(node.targetCayley);
 }
 
-std::string Node::toStringFull() const
+std::string TwoTree::toStringFull(graph_t const &graph) const
 {
-    std::string output = "x_" + std::to_string(targetCayley) + "(";
-    for(auto &&freeVar : freeCayley) {
+    auto const &node = get_node(graph);
+    std::string output = "x_" + std::to_string(node.targetCayley) + "(";
+    for(auto const &freeVar : node.freeCayley) {
         output += "x_" + std::to_string(freeVar) + ",";
     }
     output.pop_back();
@@ -345,83 +312,80 @@ std::string Node::toStringFull() const
 template<typename Graph>
 struct posWriter
 {
-    posWriter(Graph &graph)
-            : g(graph)
+    posWriter(Graph const &graph)
+        : g(graph)
     {
     }
 
     template<class Vertex>
-    void operator()(std::ostream &out, const Vertex &v) const
+    void operator()(std::ostream &out, Vertex const &v) const
     {
         out << "[pos = \"" << g[v].x << ", " << g[v].y << "!\"]";
     }
 
-    Graph &g;
+    Graph const &g;
 };
 
 
 template<typename Graph>
 struct colorWriter
 {
-    colorWriter(Graph &graph)
-            : g(graph)
+    colorWriter(Graph const &graph)
+        : g(graph)
     {
     }
 
     template<typename Edge>
-    void operator()(std::ostream &out, const Edge &e) const
+    void operator()(std::ostream &out, Edge const &e) const
     {
         out << "[color=\"" << Link::getEdgeColor(g[e].edge_type) << "\", penwidth = \"1\"]";
     }
 
-    Graph &g;
+    Graph const &g;
 };
 
-void Node::exportGraphviz(std::string suffix) const
+void TwoTree::exportGraphviz(graph_t const &graph, std::string suffix) const
 {
-    TTGT &subG = reflex->graphRef;
-    auto vIndexMap = get(vertex_index_t(), subG);
-    auto eIndexMap = get(edge_index_t(), subG);
-    std::string timestamp = to_string(std::time(NULL));
-    std::ofstream out("exports/" + this->toString() + "t" + timestamp + suffix + ".dot");
-    write_graphviz(out, subG, posWriter<TTGT>(subG), colorWriter<TTGT>(subG));
+    auto vIndexMap = get(vertex_index_t(), graph);
+    auto eIndexMap = get(edge_index_t(), graph);
+    std::string timestamp = to_string(std::time(nullptr));
+    std::ofstream out("exports/" + toString(graph) + "t" + timestamp + suffix + ".dot");
+    write_graphviz(out, graph, posWriter<graph_t>(graph), colorWriter<graph_t>(graph));
 }
 
-void Node::printDRplan() const
+void TwoTree::printDRplan(graph_t const &graph) const
 {
-    if(isCayleyNode) {
+    auto &node = get_node(graph);
+    if(node.isCayleyNode) {
         return;
     }
-    auto GraphBundle = boost::local_property<boost::graph_bundle_t>(boost::graph_bundle);
-    TTGT &subG = reflex->graphRef;
-    auto vIndexMap = get(vertex_index_t(), subG.root());
-    auto eIndexMap = get(edge_index_t(), subG.root());
-    VerIter<TTGT> vi, vi_end;
-    if(subG.is_root()) {
-
-        EdgeIter<TTGT> ei, ei_end;
-        for(tie(ei, ei_end) = edges(subG); ei != ei_end; ++ei) {
-            std::cout << subG[*ei].edge_type << " Edge " << get(eIndexMap, *ei) << ":"
-                      << "d(" << get(vIndexMap, subG.local_to_global(source(*ei, subG))) << ", "
-                      << get(vIndexMap, subG.local_to_global(target(*ei, subG))) << ") = "
-                      << subG[*ei].distance << std::endl;
+    auto vIndexMap = get(vertex_index_t(), graph);
+    auto eIndexMap = get(edge_index_t(), graph);
+    VerIter vi, vi_end;
+    if(graph.is_root()) {
+        EdgeIter ei, ei_end;
+        for(tie(ei, ei_end) = edges(graph); ei != ei_end; ++ei) {
+            std::cout << graph[*ei].edge_type << " Edge " << get(eIndexMap, *ei) << ":"
+                      << "d(" << get(vIndexMap, source(*ei, graph)) << ", "
+                      << get(vIndexMap, target(*ei, graph)) << ") = "
+                      << graph[*ei].distance << std::endl;
         }
     }
     std::cout << "Node: " << std::endl
-              << "Target Function: x_" << targetCayley << "(";
-    for(auto iter = freeCayley.begin(); iter != freeCayley.end(); ++iter) {
-        if(iter != freeCayley.begin()) std::cout << ", ";
+              << "Target Function: x_" << node.targetCayley << "(";
+    for(auto iter = node.freeCayley.begin(); iter != node.freeCayley.end(); ++iter) {
+        if(iter != node.freeCayley.begin()) std::cout << ", ";
         std::cout << "x_" << (*iter);
     }
-    std::cout << ")" << std::endl << "Target Drop: " << targetDrop << std::endl;
-    //	for(tie(vi, vi_end) = vertices(subG); vi != vi_end; ++vi) {
+    std::cout << ")" << std::endl << "Target Drop: " << node.targetDrop << std::endl;
+    //	for(tie(vi, vi_end) = vertices(graph); vi != vi_end; ++vi) {
     //		std::cout << "Vertex " << get(vIndexMap, *vi) << ":";
-    //		std::cout << "(x,y) = (" << subG[*vi].x << ",";
-    //		std::cout << subG[*vi].y << ")" << std::endl;
+    //		std::cout << "(x,y) = (" << graph[*vi].x << ",";
+    //		std::cout << graph[*vi].y << ")" << std::endl;
     //	}
-    typename TTGT::children_iterator gi, gi_end;
-    for(tie(gi, gi_end) = subG.children(); gi != gi_end; gi++) {
-        (*gi)[GraphBundle].printDRplan();
+    typename TwoTree::graph_t::children_iterator gi, gi_end;
+    for(tie(gi, gi_end) = graph.children(); gi != gi_end; gi++) {
+        printDRplan(*gi);
     }
 }
 

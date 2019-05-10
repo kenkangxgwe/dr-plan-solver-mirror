@@ -17,24 +17,13 @@
 
 #pragma once
 
-#include "stdafx.h"
 #include "BlackBox.hpp"
+#include "stdafx.h"
 
 namespace DRPLAN
 {
 
-template<typename GraphType>
-using VerIter = typename boost::graph_traits<GraphType>::vertex_iterator;
-template<typename GraphType>
-using EdgeIter = typename boost::graph_traits<GraphType>::edge_iterator;
-template<typename GraphType>
-using OutEdgeIter = typename boost::graph_traits<GraphType>::out_edge_iterator;
-template<typename GraphType>
-using AdjVerIter = typename boost::graph_traits<GraphType>::adjacency_iterator;
-template<typename GraphType>
-using VerDesc = typename boost::graph_traits<GraphType>::vertex_descriptor;
-template<typename GraphType>
-using EdgeDesc = typename boost::graph_traits<GraphType>::edge_descriptor;
+using index_t = unsigned;
 
 struct PointReflex;
 
@@ -54,7 +43,7 @@ struct Point
     };
 
     Point(double x = 0, double y = 0)
-            : x(x), y(y)
+        : x(x), y(y)
     {
     };
 
@@ -64,18 +53,19 @@ struct Point
         this->y = y;
     }
 
-    friend std::ostream& operator<< (std::ostream&, const Point&);
+    friend std::ostream &operator<<(std::ostream &, const Point &);
 
     std::string toString() const
     {
         return "(" + std::to_string(x) + ", " + std::to_string(y) + ")";
     }
 
-    PointReflex *pointReflex;
     double x, y;
+    index_t e1; ///< The first support edge index
+    index_t e2; ///< The second support edge index
 };
 
-enum class EdgeType:unsigned
+enum class EdgeType : unsigned
 {
     PARTIAL, DROPPED, ADDED, DISPLACEMENT
 };
@@ -96,7 +86,7 @@ inline std::ostream &operator<<(std::ostream &os, const EdgeType type)
             return os << "Displacement";
         }
         default: {
-            throw("Invalide EdgeType.");
+            throw ("Invalide EdgeType.");
         }
     }
 }
@@ -107,10 +97,10 @@ inline std::ostream &operator<<(std::ostream &os, const EdgeType type)
  */
 struct Link
 {
-    static constexpr const char* PARTIAL_COLOR = "black";
-    static constexpr const char* DROPPED_COLOR = "red";
-    static constexpr const char* ADDED_COLOR = "green";
-    static constexpr const char* DISPLACEMENT_COLOR = "blue";
+    static constexpr const char *PARTIAL_COLOR = "black";
+    static constexpr const char *DROPPED_COLOR = "red";
+    static constexpr const char *ADDED_COLOR = "green";
+    static constexpr const char *DISPLACEMENT_COLOR = "blue";
 
     static inline double getEps()
     {
@@ -128,7 +118,7 @@ struct Link
         if(color == ADDED_COLOR) {
             return EdgeType::ADDED;
         }
-        throw("There is no corresponding type for color \"" + color + "\".");
+        throw ("There is no corresponding type for color \"" + color + "\".");
     }
 
     static inline std::string getEdgeColor(EdgeType type)
@@ -147,13 +137,13 @@ struct Link
                 return DISPLACEMENT_COLOR;
             }
             default: {
-                throw("Invalide EdgeType.");
+                throw ("Invalide EdgeType.");
             }
         }
     }
 
     Link()
-            : distance(100.0f), interval(std::make_pair(getEps(), 200.0f - getEps())) {}
+        : distance(100.0f), interval(std::make_pair(getEps(), 200.0f - getEps())) {}
 
     EdgeType edge_type;
     double distance;
@@ -166,72 +156,47 @@ class TwoTree;
 
 struct Node
 {
-    void generateDRplan(); ///< Generates the DR-Plan beneath current DR-Node.
-    void printDRplan() const; ///< Prints the generated DR-Plan.
-    void exportGraphviz(std::string = "") const; ///< Exports GraphViz dot file.
-    Node* realize(std::unordered_map<unsigned, double>);  ///< Realizes the DR-Plan.
-    void calcInterval(); ///< Calculates the interval of Cayley node.
-    std::pair<double, double> refineInterval(std::unordered_map<unsigned, double>); ///< Refines the interval of Cayley parameter according to triangle inequality.
-    double dropDiff(); ///< Calculates the difference in length between actual and expect target dropped edge.
-    std::pair<double, double> dropFlip(); ///< Determines the dropped edge's flip.
-    void findFlip(); ///< Find the vertices that determine the dropped edge's flip.
-    std::string toString() const; ///< Describes current DR-Node by its target Cayley.
-    std::string toStringFull() const; ///< Describes current DR-Node by its expression.
-
-    Reflex *reflex; ///< A pointer avoiding cross-reference
-    const TwoTree *tt; ///< A Pointer to the root two-tree
     bool isCayleyNode = false; ///< A predication whether the DR-Node is a Cayley node
     std::pair<double, double> interval; ///< The interval of sampling
-    std::vector<unsigned> freeCayley; ///< All free Cayley parameters in this this and sub nodes
-    std::vector<unsigned> allCayley; ///< All cayley parameters in this this and sub nodes
+    std::vector<index_t> freeCayley; ///< All free Cayley parameters in this this and sub nodes
+    std::vector<index_t> allCayley; ///< All cayley parameters in this this and sub nodes
     double targetLength = 100; ///< The length of the target dropped edge
-    unsigned targetDrop; ///< The index of dropped edge
-    unsigned targetCayley; ///< The index of target Cayley parameter
-    std::vector<Node *> subNodes; ///< A list of sub DR-Nodes pointers.
-};
-
-typedef boost::subgraph<
-        boost::adjacency_list<
-                boost::vecS, ///< OutEdgeList
-                boost::vecS, ///< VertexList
-                boost::undirectedS, ///< Directed
-                boost::property<
-                        boost::vertex_index_t,
-                        unsigned,
-                        Point>, ///< VertexProperties
-                boost::property<
-                        boost::edge_index_t,
-                        unsigned,
-                        Link>, ///< EdgeProperties
-                Node, ///< GraphProperties
-                boost::vecS ///< EdgeList
-        >> TTGT; ///< Two Tree Graph Type
-
-/**
- * The struct that saves the two edges that connect a vertex to the two-tree.
- */
-struct PointReflex
-{
-    EdgeDesc<TTGT> e1; ///< The first edge descriptor
-    EdgeDesc<TTGT> e2; ///< The second edge descriptor
-};
-
-struct Reflex
-{
-    Reflex(TTGT &g) : graphRef(g) {};
-
-    ~Reflex() {};
-    TTGT &graphRef; ///< The root two-tree
-    EdgeDesc<TTGT> targetEdge; ///< The dropped flip edge descriptor
-    EdgeDesc<TTGT> droppedEdge; /// < The target dropped edge descriptor
-    EdgeDesc<TTGT> flipEdge; ///< The dropped flip edge descriptor
+    index_t targetDrop; ///< The index of dropped edge
+    index_t targetCayley; ///< The index of target Cayley parameter
+    index_t dropFlipEdge; ///< The index of edge to determin dropped flip
 };
 
 class TwoTree
 {
-    typedef TTGT graph_t;
 
 public:
+
+    typedef boost::subgraph<
+        boost::adjacency_list<
+            boost::vecS, ///< OutEdgeList
+            boost::vecS, ///< VertexList
+            boost::undirectedS, ///< Directed
+            boost::property<
+                boost::vertex_index_t,
+                index_t,
+                Point>, ///< VertexProperties
+            boost::property<
+                boost::edge_index_t,
+                index_t,
+                Link>, ///< EdgeProperties
+            Node, ///< GraphProperties
+            boost::vecS ///< EdgeList
+        >> graph_t;
+
+    typedef graph_t::vertex_iterator VerIter;
+    typedef graph_t::edge_iterator EdgeIter;
+    typedef graph_t::vertex_descriptor VerDesc;
+    typedef graph_t::edge_descriptor EdgeDesc;
+    typedef graph_t::out_edge_iterator OutEdgeIter;
+    typedef graph_t::adjacency_iterator AdjVerIter;
+    typedef graph_t::children_iterator ChildIter;
+    typedef graph_t::const_children_iterator CChildIter;
+
     /**
      * Class for flip.
      */
@@ -251,22 +216,52 @@ public:
         std::vector<bool> flip;
     };
 
-    TwoTree(std::string, bool = false);
+    TwoTree();
+    explicit TwoTree(std::string, bool = false);
+    TwoTree(TwoTree const &);
     ~TwoTree();
     void print_vertices() const;
     void print_edges() const;
     void print_graph() const;
     void generateDRplan();
     void printDRplan() const;
+    size_t dropped_num() const;
+    index_t getDroppedEdge(size_t) const;
+    double changeDistanceBy(index_t, double);
+    EdgeDesc const &operator[](index_t) const;
+    Node &operator[](graph_t &graph);
+    Node const &operator[](graph_t const &graph) const;
     void realize(std::unordered_map<unsigned, double>, std::string);
-    Node &getRoot();
-    graph_t graph;
+
     Flip flip;
     Flip dropFlip;
 
+    friend class Tree;
+
 private:
+    void updateEdgeList();
+    void copy_node(graph_t &, graph_t const &);
     void getSupportEdges();
-    const boost::local_property<boost::graph_bundle_t> GraphBundle;
+    void calcEdgeBoundaries();
+    void generateDRplan(graph_t &); ///< Generates the DR-Plan beneath a sub-graph.
+    void printDRplan(graph_t const &) const; ///< Prints the generated DR-Plan beneath a sub-graph.
+    void findFlip(graph_t &);
+
+    Node &get_node(graph_t &);
+    Node const &get_node(graph_t const &) const;
+    std::string toString(graph_t const &) const;
+    std::string toStringFull(graph_t const &) const;
+    void exportGraphviz(graph_t const &graph, std::string suffix) const;
+
+    TwoTree &realize(graph_t &, std::unordered_map<unsigned, double> valMap);
+    std::pair<double, double> getDropFlip(graph_t &);
+    double dropDiff(graph_t &);
+    std::pair<double, double> refineInterval(index_t, std::unordered_map<unsigned, double> valMap);
+
+    graph_t m_graph;
+    std::unordered_map<index_t, EdgeDesc> edge_map;
+    std::vector<index_t> dropped_list;
+    std::vector<index_t> added_list;
 };
 
 }

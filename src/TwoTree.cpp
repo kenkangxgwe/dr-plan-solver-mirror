@@ -15,9 +15,11 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "stdafx.h"
 #include "TwoTree.h"
 #include "TwoTreeUtils.h"
+
+#include <glpk.h>
+#include "stdafx.h"
 
 using namespace boost;
 
@@ -86,19 +88,24 @@ struct edge_copier
     mutable typename property_map<outputGraph, EdgeType Link::*>::type edge_type_map;
 };
 
+typedef undirected_graph<
+    property<
+        position_t, ///< Vertex's position
+        std::string >,
+    property<
+        color_t, ///< Edge's color
+        std::string >,
+    no_property
+> graphviz_t; ///< Type for GraphViz m_graph
+
+TwoTree::TwoTree()
+{
+    m_graph = graph_t(0);
+}
+
 TwoTree::TwoTree(std::string filePath, bool useDistanceInfo)
-        : GraphBundle(boost::local_property<boost::graph_bundle_t>(boost::graph_bundle))
 {
     std::ifstream ifs(filePath);
-    typedef undirected_graph<
-            property<
-                    position_t, ///< Vertex's position
-                    std::string >,
-            property<
-                    color_t, ///< Edge's color
-                    std::string >,
-            no_property
-    > graphviz_t; ///< Type for GraphViz graph
     graphviz_t graphviz(0);
     dynamic_properties dp(ignore_other_properties);
 
@@ -107,10 +114,19 @@ TwoTree::TwoTree(std::string filePath, bool useDistanceInfo)
     dp.property("color", get(color_t(), graphviz));
     assert(read_graphviz(ifs, graphviz, dp, "node_id"));
 
-    copy_graph(graphviz, graph, vertex_copy(copy_nothing())
-            .edge_copy(edge_copier<graphviz_t, graph_t>(graphviz, graph, useDistanceInfo)));
+    copy_graph(graphviz, m_graph, vertex_copy(copy_nothing())
+            .edge_copy(edge_copier<graphviz_t, graph_t>(graphviz, m_graph, useDistanceInfo)));
+    updateEdgeList();
     getSupportEdges();
-    flip = Flip((unsigned)num_vertices(graph));
+    flip = Flip((unsigned)num_vertices(m_graph));
+    generateDRplan();
+}
+
+TwoTree::TwoTree(TwoTree const & twotree)
+    : m_graph(TwoTree::graph_t{twotree.m_graph}), flip(twotree.flip), dropFlip(twotree.dropFlip)
+{
+    updateEdgeList();
+    //copy_node(m_graph, twotree.m_graph);
 }
 
 TwoTree::~TwoTree()
@@ -118,32 +134,257 @@ TwoTree::~TwoTree()
 
 }
 
+auto TwoTree::operator[](index_t edge_index) const -> EdgeDesc const &
+{
+    if(edge_map.count(edge_index)) {
+        return edge_map.at(edge_index);
+    } else {
+        return edge_map.cbegin()->second;
+    }
+}
+
+void TwoTree::updateEdgeList() {
+    EdgeIter ei, ei_end;
+    auto eIndexMap = get(edge_index_t(), m_graph);
+    for(tie(ei, ei_end) = edges(m_graph); ei != ei_end; ++ei) {
+        edge_map[get(eIndexMap, *ei)] = *ei;
+        switch(m_graph[*ei].edge_type) {
+            case EdgeType::ADDED: {
+                added_list.push_back(get(eIndexMap, (*ei)));
+            } break;
+            case EdgeType::DROPPED: {
+                dropped_list.push_back(get(eIndexMap, (*ei)));
+            } break;
+            default: {
+                continue;
+            }
+        }
+    }
+}
+
+void TwoTree::copy_node(graph_t &m_graph, graph_t const &o_graph)
+{
+    //if(!m_graph.is_root()) {
+    //    get_property(m_graph) = get_property(o_graph);
+    //}
+    //graph_t::children_iterator m_gi, m_gi_end;
+    //graph_t::const_children_iterator o_gi, o_gi_end;
+    //boost::tie(m_gi, m_gi_end) = m_graph.children();
+    //boost::tie(o_gi, o_gi_end) = o_graph.children();
+    //auto [m_gi, m_gi_end] = m_graph.children();
+    //auto [o_gi, o_gi_end] = o_graph.children();
+    //for( ; m_gi != m_gi_end; ++m_gi, ++o_gi) {
+    //    copy_node(*m_gi, *o_gi);
+    //}
+}
+
+void TwoTree::getSupportEdges()
+{
+    if(num_edges(m_graph) < 3) {
+        throw ("Not enough vertices.");
+    }
+    auto eIndexMap = get(edge_index_t(), m_graph);
+    OutEdgeIter oe_start, oe, oe_end;
+    VerIter vi, vi_end;
+    tie(vi, vi_end) = vertices(m_graph);
+    ++vi;
+    tie(oe_start, oe_end) = out_edges(*vi, m_graph);
+    for(oe = oe_start; oe != oe_end; ++oe) {
+        if(target(*oe, m_graph) < *vi) {
+            m_graph[*vi].e1 = get(eIndexMap, *oe);
+            break;
+        }
+    }
+    ++vi;
+    for(; vi != vi_end; ++vi) {
+        bool firstEdge = true;
+        tie(oe_start, oe_end) = out_edges(*vi, m_graph);
+        for(oe = oe_start; oe != oe_end; ++oe) {
+            if(target(*oe, m_graph) < *vi) {
+                if(m_graph[*oe].edge_type == EdgeType::DROPPED) {
+                    continue;
+                }
+                if(firstEdge) { ///< First edge
+                    m_graph[*vi].e1 = get(eIndexMap, *oe);
+                    firstEdge = false;
+                } else { ///< second edge
+                    if(target(*oe, m_graph) < getOppositeVertex(*vi, edge_map[m_graph[*vi].e1], m_graph)) {
+                        m_graph[*vi].e2 = m_graph[*vi].e1;
+                        m_graph[*vi].e1 = get(eIndexMap, *oe);
+                    } else {
+                        m_graph[*vi].e2 = get(eIndexMap, *oe);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+}
+
 void TwoTree::print_vertices() const
 {
-    boost::print_vertices(graph, get(vertex_index, graph));
+    boost::print_vertices(m_graph, get(vertex_index, m_graph));
 }
 
 void TwoTree::print_edges() const
 {
-    boost::print_edges2(graph, get(vertex_index, graph), get(&Link::edge_type, graph));
+    boost::print_edges2(m_graph, get(vertex_index, m_graph), get(&Link::edge_type, m_graph));
 }
 
 void TwoTree::print_graph() const
 {
-    boost::print_graph(graph, get(vertex_index, graph));
+    boost::print_graph(m_graph, get(vertex_index, m_graph));
 }
 
 void TwoTree::generateDRplan()
 {
-    graph[GraphBundle].reflex = new Reflex(graph);
-    graph[GraphBundle].tt = this;
-    calcEdgeBoundaries(graph);
-    graph[GraphBundle].generateDRplan();
+    calcEdgeBoundaries();
+    generateDRplan(m_graph);
+}
+
+size_t TwoTree::dropped_num() const
+{
+    return dropped_list.size();
+}
+
+index_t TwoTree::getDroppedEdge(size_t drop_i) const
+{
+    return dropped_list[drop_i];
+}
+
+double TwoTree::changeDistanceBy(index_t edge_i, double ratio)
+{
+    m_graph[edge_map[edge_i]].distance *= ratio;
+    return m_graph[edge_map[edge_i]].distance;
+}
+
+void TwoTree::calcEdgeBoundaries()
+{
+    glp_prob *lp = glp_create_prob();
+    glp_set_prob_name(lp, "find_edge_boundary");
+
+    auto eIndexMap = get(edge_index_t(), m_graph);
+    std::unordered_map<size_t, int> edge_to_col;
+    EdgeIter ei, ei_end;
+
+    // add the column of the added edges.
+    tie(ei, ei_end) = edges(m_graph);
+    for(; ei != ei_end; ++ei) {
+        if(m_graph[*ei].edge_type == EdgeType::ADDED) {
+            int col = glp_add_cols(lp, 1);
+            edge_to_col[get(eIndexMap, *ei)] = col;
+        }
+    }
+
+    std::vector<int> cons_i, cons_j;
+    cons_i.push_back(0);
+    cons_j.push_back(0);
+    std::vector<double> cons_coef;
+    cons_coef.push_back(0.0);
+    for(tie(ei, ei_end) = edges(m_graph); ei != ei_end; ++ei) {
+        if(m_graph[*ei].edge_type != EdgeType::ADDED) {
+            continue;
+        }
+        double min = 0, max = DBL_MAX;
+        VerDesc v1 = source(*ei, m_graph);
+        VerDesc v2 = target(*ei, m_graph);
+        auto edge_pairs = std::move(findCommonTargetEdges(v1, v2, m_graph));
+        for(auto [e1, e2]: edge_pairs) {
+            if(m_graph[e1].edge_type == EdgeType::DROPPED
+               || m_graph[e2].edge_type == EdgeType::DROPPED) {
+                continue;
+            }
+
+            if(m_graph[e1].edge_type == EdgeType::ADDED) {
+                if(m_graph[e2].edge_type == EdgeType::ADDED) {
+                    // add constrains for (- x0 + x1 + x2> 0)
+                    int row = glp_add_rows(lp, 1);
+                    glp_set_row_bnds(lp, row, GLP_LO, 0.0, 0.0);
+                    cons_i.insert(cons_i.end(), 3, row);
+                    cons_j.push_back(edge_to_col[get(eIndexMap, *ei)]);
+                    cons_coef.push_back(-1.0);
+                    cons_j.push_back(edge_to_col[get(eIndexMap, e1)]);
+                    cons_coef.push_back(1.0);
+                    cons_j.push_back(edge_to_col[get(eIndexMap, e2)]);
+                    cons_coef.push_back(1.0);
+                } else {
+                    // add constrains for (x0 - x1 < d2)
+                    int row = glp_add_rows(lp, 1);
+                    glp_set_row_bnds(lp, row, GLP_UP, 0.0, m_graph[e2].distance);
+                    cons_i.insert(cons_i.end(), 2, row);
+                    cons_j.push_back(edge_to_col[get(eIndexMap, *ei)]);
+                    cons_coef.push_back(1.0);
+                    cons_j.push_back(edge_to_col[get(eIndexMap, e1)]);
+                    cons_coef.push_back(-1.0);
+
+                    // add constrains for (x0 + x1 > d2)
+                    row = glp_add_rows(lp, 1);
+                    glp_set_row_bnds(lp, row, GLP_LO, m_graph[e2].distance, 0.0);
+                    cons_i.insert(cons_i.end(), 2, row);
+                    cons_j.push_back(edge_to_col[get(eIndexMap, *ei)]);
+                    cons_coef.push_back(1.0);
+                    cons_j.push_back(edge_to_col[get(eIndexMap, e1)]);
+                    cons_coef.push_back(1.0);
+                }
+            } else if(m_graph[e2].edge_type == EdgeType::ADDED) {
+                // add constrains for (x0 - x2 < d1)
+                int row = glp_add_rows(lp, 1);
+                glp_set_row_bnds(lp, row, GLP_LO, 0.0, m_graph[e2].distance);
+                cons_i.insert(cons_i.end(), 2, row);
+                cons_j.push_back(edge_to_col[get(eIndexMap, *ei)]);
+                cons_coef.push_back(1.0);
+                cons_j.push_back(edge_to_col[get(eIndexMap, e2)]);
+                cons_coef.push_back(-1.0);
+
+                // add constrains for (x0 + x2 > d1)
+                row = glp_add_rows(lp, 1);
+                glp_set_row_bnds(lp, row, GLP_LO, m_graph[e2].distance, 0.0);
+                cons_i.insert(cons_i.end(), 2, row);
+                cons_j.push_back(edge_to_col[get(eIndexMap, *ei)]);
+                cons_coef.push_back(1.0);
+                cons_j.push_back(edge_to_col[get(eIndexMap, e2)]);
+                cons_coef.push_back(1.0);
+            } else {
+                double sum = m_graph[e1].distance + m_graph[e2].distance;
+                double diff = abs(m_graph[e1].distance - m_graph[e2].distance);
+                if(max > sum) {
+                    max = sum;
+                }
+                if(min < diff) {
+                    min = diff;
+                }
+            }
+        }
+
+        // add constrains on min < x0 < max
+        int col =  edge_to_col[get(eIndexMap, *ei)];
+        glp_set_col_bnds(lp, col, GLP_DB, min, max);
+    }
+
+    glp_load_matrix(lp, static_cast<int>(cons_coef.size() - 1), &cons_i[0], &cons_j[0], &cons_coef[0]);
+    for(tie(ei, ei_end) = edges(m_graph); ei != ei_end; ++ei) {
+        if(m_graph[*ei].edge_type == EdgeType::ADDED) {
+            int col = edge_to_col[get(eIndexMap, *ei)];
+            glp_set_obj_coef(lp, col, 1);
+            glp_set_obj_dir(lp, GLP_MIN);
+            glp_simplex(lp, nullptr);
+            double min = glp_get_obj_val(lp);
+            glp_set_obj_dir(lp, GLP_MAX);
+            glp_simplex(lp, nullptr);
+            double max = glp_get_obj_val(lp);
+            m_graph[*ei].interval = std::make_pair(min, max);
+            double lb = glp_get_col_lb(lp, col);
+            double ub = glp_get_col_ub(lp, col);
+            glp_set_obj_coef(lp, col, 0);
+        }
+    }
+    glp_delete_prob(lp);
 }
 
 void TwoTree::printDRplan() const
 {
-    graph[GraphBundle].printDRplan();
+    printDRplan(m_graph);
+    testSubgraph(m_graph, *this);
 }
 
 void TwoTree::realize(std::unordered_map<unsigned, double> valMap, std::string suffix)
@@ -153,75 +394,25 @@ void TwoTree::realize(std::unordered_map<unsigned, double> valMap, std::string s
     }
     std::cout << std::endl;
     try {
-        graph[GraphBundle].realize(valMap);
-        VerIter<graph_t> vi, vi_end;
-        EdgeIter<graph_t> ei, ei_end;
-        for(tie(vi, vi_end) = vertices(graph); vi != vi_end; ++vi) {
+        realize(m_graph, valMap);
+        VerIter vi, vi_end;
+        EdgeIter ei, ei_end;
+        for(tie(vi, vi_end) = vertices(m_graph); vi != vi_end; ++vi) {
             std::cout << "Vertex " << *vi << ": "
-                      << "(x, y) = " << graph[*vi].toString() << std::endl;
+                      << "(x, y) = " << m_graph[*vi].toString() << std::endl;
         }
-        for(tie(ei, ei_end) = edges(graph); ei != ei_end; ++ei) {
-            std::cout << graph[*ei].edge_type << " Edge " << *ei << ": "
-                      << "Expect Length:" << graph[*ei].distance
-                      << "\tActual Length:" << Point::distance(graph[source(*ei, graph)], graph[target(*ei, graph)])
+        for(tie(ei, ei_end) = edges(m_graph); ei != ei_end; ++ei) {
+            std::cout << m_graph[*ei].edge_type << " Edge " << *ei << ": "
+                      << "Expect Length:" << m_graph[*ei].distance
+                      << "\tActual Length:" << Point::distance(m_graph[source(*ei, m_graph)], m_graph[target(*ei, m_graph)])
                       << std::endl;
         }
-        graph[GraphBundle].exportGraphviz(suffix);
+        exportGraphviz(m_graph, suffix);
     } catch(const char *msg) {
         std::cout << msg << std::endl;
     }
     std::cout << std::endl;
 
-}
-
-Node &TwoTree::getRoot()
-{
-    return graph[GraphBundle];
-}
-
-void TwoTree::getSupportEdges()
-{
-    if(num_edges(graph) < 3) {
-        throw ("Not enough vertices.");
-    }
-    auto eIndexMap = get(edge_index_t(), graph);
-    OutEdgeIter<TTGT> oe_start, oe, oe_end;
-    VerIter<TTGT> vi, vi_end;
-    tie(vi, vi_end) = vertices(graph);
-    ++vi;
-    tie(oe_start, oe_end) = out_edges(*vi, graph);
-    for(oe = oe_start; oe != oe_end; ++oe) {
-        if(target(*oe, graph) < *vi) {
-            graph[*vi].pointReflex = new PointReflex();
-            graph[*vi].pointReflex->e1 = *oe;
-            break;
-        }
-    }
-    ++vi;
-    for(; vi != vi_end; ++vi) {
-        bool firstEdge = true;
-        tie(oe_start, oe_end) = out_edges(*vi, graph);
-        for(oe = oe_start; oe != oe_end; ++oe) {
-            if(target(*oe, graph) < *vi) {
-                if(graph[*oe].edge_type == EdgeType::DROPPED) {
-                    continue;
-                }
-                if(firstEdge) { ///< First edge
-                    graph[*vi].pointReflex = new PointReflex();
-                    graph[*vi].pointReflex->e1 = *oe;
-                    firstEdge = false;
-                } else { ///< second edge
-                    if(target(*oe, graph) < target(graph[*vi].pointReflex->e1, graph)) {
-                        graph[*vi].pointReflex->e2 = graph[*vi].pointReflex->e1;
-                        graph[*vi].pointReflex->e1 = *oe;
-                    } else {
-                        graph[*vi].pointReflex->e2 = *oe;
-                    }
-                    break;
-                }
-            }
-        }
-    }
 }
 
 TwoTree::Flip::Flip()
