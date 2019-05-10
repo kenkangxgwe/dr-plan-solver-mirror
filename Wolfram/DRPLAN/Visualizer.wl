@@ -78,7 +78,7 @@ PrintDRPlan[node_DRNode]:= DynamicModule[
                 Grid[{{
                     (* openerView[node, Dynamic[selectedNode]], *)
                     LayeredGraphPlot[
-                        node["EdgeRules"],
+                        node["PlanRules"],
                         Top,
                         VertexRenderingFunction -> fn[nodeType],
                         EdgeRenderingFunction -> ({Dashed, Opacity[.5], Line[#1]}&),
@@ -101,7 +101,7 @@ PrintDRPlan[node_DRNode]:= DynamicModule[
                         }, Alignment -> {{Right, Left}, Top}]
                     }],
                     (* TreePlot[
-                        node["EdgeRules"],
+                        node["PlanRules"],
                         Top,
                         node,
                         AspectRatio -> .5,
