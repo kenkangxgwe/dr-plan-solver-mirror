@@ -804,12 +804,6 @@ InterpolatingFunctionGroup[ifs:{__InterpolatingFunction}][x:(_?NumericQ | {__?Nu
 InterpolatingFunctionGroup[ifs:{__InterpolatingFunction}]["Domain"] := First[ifs]["Domain"]
 
 
-(* Format[ifg:InterpolatingFunctionGroup[ifs:{__InterpolatingFunction}]] := Interpretation[
-    InterpolatingFunctionGroup[Panel[Row[{Nothing, Column[ifs]}]]],
-    ifg
-] *)
-
-
 findApproxIntervals[samplePoints_SparseArray, threshold_?NumericQ] := Module[
     {
         booleanList, seqPos

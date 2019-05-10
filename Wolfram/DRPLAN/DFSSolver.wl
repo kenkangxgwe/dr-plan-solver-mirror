@@ -29,6 +29,9 @@ ClearAll[Evaluate[Context[] <> "*"]]
 DFSSolvingStart::usage = "DFSSolvingStart[root_DRNode] solves in DFS manner and pause when a solution is found."
 DFSSolvingContinue::usage = "DFSSolvingContinue[] continues the DFS paused last time." 
 DFSSolution::usage = "An object that contains the information for a DFS solution."
+ToPlanSolution::usage = StringJoin[ToPlanSolution::usage, "\n",
+    "ToPlanSolution[dfsSolution_DFSSolution] turns a DFS solution for the root node to a plan solution."
+]
 
 
 Begin["`Private`"]
@@ -40,21 +43,37 @@ StackSerialize[stack_?qQ] := SerializedQueue @@ stack
 
 StackDeserialize[stack_SerializedQueue] := Copy[Parallel`Queue`LIFO`Private`queue @@ stack] 
 
-StackSave[stack_?qQ, path_] := Block[
+
+$ConfigPath = "DFS_Solution_Stack.mx"
+
+(* Block must be used here *)
+ConfigSave[stack_?qQ, options:{OptionsPattern[]}, path_String] := Block[
     {
-        serializedQueue
+        serializedQueue, solvingOptions
     },
     serializedQueue = StackSerialize[stack];
-    DumpSave[path, serializedQueue];
+    solvingOptions = options;
+    DumpSave[path, {serializedQueue, solvingOptions}];
 ]
 
-StackLoad[path_] := Block[
+ConfigLoad::invcfg = "Invalid config file at `1`"
+(* Block must be used here *)
+ConfigLoad[path_String] := Block[
     {
-        serializedQueue
+        (* Variable names must be same as in ConfigSave *)
+        serializedQueue, solvingOptions
     },
 
     Get[path];
-    StackDeserialize[serializedQueue]
+    {
+        StackDeserialize[serializedQueue],
+        solvingOptions
+    } // Replace[{
+        Except[{_?qQ, OptionsPattern[]}] :> (
+            Message[ConfigLoad::invcfg, path];
+            Abort[]
+        )
+    }]
 ]
 
 
@@ -62,13 +81,19 @@ StackLoad[path_] := Block[
 (*DFS Solving*)
 
 
+(* Extends DRPLAN`Solver`ToPlanSolution *)
+ToPlanSolution[DFSSolution[nodeSolution_NodeSolution, _]] :=
+    ToPlanSolution[nodeSolution]
+
+
 Options[DFSSolvingStart] = {
-    "DumpPath" -> "DFS_Solution_Stack.mx",
-    "StopAtSolution" -> False
+    "DumpPath" :> $ConfigPath,
+    "StopAtSolution" -> False,
+    "AllCFlip" -> False
 }
 
 Options[DFSSolvingContinue] = {
-    "DumpPath" -> "DFS_Solution_Stack.mx",
+    "DumpPath" :> $ConfigPath,
     "StopAtSolution" -> False
 }
 
@@ -77,34 +102,30 @@ DFSSolvingStart[root_DRNode, o:OptionsPattern[]] := Module[
     {
         stack = LIFOQueue[],
         (* options *)
-        dumpPath, stopAtSolution
+        dumpPath
     },
 
     {dumpPath} = OptionValue[DFSSolvingStart, {o}, {"DumpPath"}];
 
-    SolveAllLeaves[stack, root];
+    SolveAllLeaves[stack, root, FilterRules[{o}, Options[SolveAllLeaves]]];
 
-    StackSave[stack, dumpPath];
+    ConfigSave[stack, {o}, dumpPath];
 
-    DFSSolvingContinue[root, o]
+    DFSSolvingContinue[root]
 
 ]
 
 DFSSolvingContinue::nstart = "The solving for `1` has not start yet, please call DFSSolveStart[`1`]."
 DFSSolvingContinue[root_DRNode, o:OptionsPattern[]] := Module[
     {
-        serializedQueue, rootSolutionQ = False,
+        stack, rootSolutionQ = False,
         (* options *)
         dumpPath, stopAtSolution
     },
 
-    {dumpPath, stopAtSolution} = OptionValue[DFSSolvingStart, {o}, {"DumpPath", "StopAtSolution"}];
+    {dumpPath, stopAtSolution} = OptionValue[DFSSolvingContinue, {o}, {"DumpPath", "StopAtSolution"}];
 
-    If[FileExistsQ[dumpPath] && !DirectoryQ[dumpPath],
-        stack = StackLoad[dumpPath],
-        Message[DFSSolvingContinue::nstart, root];
-        Abort[]
-    ];
+    stack = ConfigLoad[dumpPath];
 
     While[Size[stack] > 0 && (!stopAtSolution || !rootSolutionQ),
         rootSolutionQ = SolveOneFlip[stack, DeQueue[stack]];
@@ -114,17 +135,23 @@ DFSSolvingContinue[root_DRNode, o:OptionsPattern[]] := Module[
             "Current Solution Size: ", Length[root["DFSSolutions"]]
         ];
         AbortProtect[
-            StackSave[stack, dumpPath];
+            ConfigSave[stack, solvingOptions, dumpPath];
         ]
     ]
 
 ]
 
 
-SolveAllLeaves[stack_?qQ, node_DRNode] := Module[
+Options[SolveAllLeaves] = {
+    "AllCFlip" -> False
+}
+
+SolveAllLeaves[stack_?qQ, node_DRNode, o:OptionsPattern] := Module[
     {
-        cayleyVertex, rootgraph
+        cayleyVertex, rootgraph, allCFlip
     },
+
+    {allCFlip} = OptionValue[SolveAllLeaves, {o}, {"AllCFlip"}];
 
     If[node["IsCayleyNode"],
         rootgraph = node["Root"]["Graph"];
@@ -142,14 +169,17 @@ SolveAllLeaves[stack_?qQ, node_DRNode] := Module[
                 ], (* One DFlip *)
                 node (* corresponding node *)
             ],
-            DFSSolution[
-                NodeSolution[
-                    <|node["TargetCayley"] -> (First @* (Curry[Through[#1[#2]]&, 2][Lookup /@ node["FreeCayley"]]))|>, (* identity function *)
-                    <|node["TargetCayley"] -> node["Interval"]|>, (* domain *)
-                    {1}, (* D-flip index *)
-                    <|cayleyVertex -> !PropertyValue[{rootgraph, cayleyVertex}, "Flip"]|> (* overwriting the C-flip*)
-                ], (* One DFlip *)
-                node (* corresponding node *)
+            If[allCFlip,
+                DFSSolution[
+                    NodeSolution[
+                        <|node["TargetCayley"] -> (First @* (Curry[Through[#1[#2]]&, 2][Lookup /@ node["FreeCayley"]]))|>, (* identity function *)
+                        <|node["TargetCayley"] -> node["Interval"]|>, (* domain *)
+                        {1}, (* D-flip index *)
+                        <|cayleyVertex -> !PropertyValue[{rootgraph, cayleyVertex}, "Flip"]|> (* overwriting the C-flip*)
+                    ], (* One DFlip *)
+                    node (* corresponding node *)
+                ],
+                Nothing
             ]
         };
 
@@ -169,7 +199,7 @@ SolveAllLeaves[stack_?qQ, node_DRNode] := Module[
 
         Table[
             subNode["Parents"] = Union[subNode["Parents"], {node}];
-            SolveAllLeaves[stack, subNode],
+            SolveAllLeaves[stack, subNode, o],
             {subNode, node["SubNodes"]}
         ];
     ]
@@ -229,7 +259,7 @@ notifyParents[stack_?qQ, node_DRNode] := (
         (* Do nothing *)
         Return[],
 
-        (* add to the priority queue*)
+        (* add to the stack *)
         Fold[EnQueue, stack, 
             Table[Outer[
                 mergeDFSSolution[parent, ##]&,

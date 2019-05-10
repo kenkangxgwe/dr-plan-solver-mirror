@@ -22,7 +22,7 @@
 (*DRPLAN OffsetSolver*)
 
 
-BeginPackage["DRPLAN`OffsetSolver`", {"DRPLAN`Solver`"}]
+BeginPackage["DRPLAN`OffsetSolver`", {"DRPLAN`Solver`", "DRPLAN`Core`"}]
 ClearAll[Evaluate[Context[] <> "*"]]
 
 
@@ -30,6 +30,9 @@ SolveAllOffsetsStart::usage = "SolveAllOffsetsStart[root_DRNode, offset] starts 
 and pause until it found one solution."
 SolveAllOffsetsContinue::usage = "SolveAllOffsetsContinue[] continues the search that SolveAllOffsetsStart started last time." 
 OffsetSolution::usage = "An object that contains the information for a offset solution."
+ToPlanSolution::usage = StringJoin[ToPlanSolution::usage, "\n",
+    "ToPlanSolution[offsetSolution_OffsetSolution] turns a offset solution for the root node to a list of plan solutions."
+]
 
 
 Begin["`Private`"]
@@ -37,17 +40,55 @@ ClearAll[Evaluate[Context[] <> "*"]]
 Needs["Parallel`Queue`Priority`"]
 
 
+QueueSerialize[queue_?qQ] := SerializedQueue @@ queue
+
+QueueDeserialize[queue_SerializedQueue] := Copy[Parallel`Queue`Priority`Private`queue @@ queue]
+
+
+$ConfigPath = "Offset_Solution_PQueue.mx"
+
+(* Block must be used here *)
+ConfigSave[queue_?qQ, options:{OptionsPattern[]}, path_String] := Block[
+    {
+        serializedQueue, solvingOptions
+    },
+    serializedQueue = QueueSerialize[queue];
+    solvingOptions = options;
+    DumpSave[path, {serializedQueue, solvingOptions}];
+]
+
+ConfigLoad::invcfg = "Invalid config file at `1`"
+(* Block must be used here *)
+ConfigLoad[path_String] := Block[
+    {
+        (* Variable names must be same as in ConfigSave *)
+        serializedQueue, solvingOptions
+    },
+
+    Get[path];
+    {
+        QueueDeserialize[serializedQueue],
+        solvingOptions
+    } // Replace[{
+        Except[{_?qQ, OptionsPattern[]}] :> (
+            Message[ConfigLoad::invcfg, path];
+            Abort[]
+        )
+    }]
+]
+
+
 (* ::Subsection:: *)
 (*solve offsets*)
 
 
 OffsetSolution /: MakeBoxes[OffsetSolution[nodeSolutions:{__NodeSolution}, offsets_Association, node_DRNode], StandardForm] := 
-Construct[MakeBoxes, OffsetSolution[Panel[Grid[{
-    {"NodeSolution:", SpanFromLeft},
-    {Panel[Column @ Normal @ nodeSolutions], SpanFromLeft},
-    {"Offsets:", offsets},
-    {"Node", node}
-}], Alignment -> {{Left, Left}}]], StandardForm]
+    Construct[MakeBoxes, OffsetSolution[Panel[Grid[{
+        {"NodeSolution:", SpanFromLeft},
+        {Panel[Column @ Normal @ nodeSolutions], SpanFromLeft},
+        {"Offsets:", offsets},
+        {"Node", node}
+    }], Alignment -> {{Left, Left}}]], StandardForm]
 
 
 (* implement comparison operators for offset priority value *)
@@ -121,36 +162,106 @@ ChainDiverseLevelImpl[dFlips_List, height_Integer] := ChainDiverseLevelImpl[
 ]
 
 
-SolveAllOffsetsContinue::nstart = "The solving for `1` has not start yet, please call SolveAllOffsetsStart[`1`, offsets]."
-SolveAllOffsetsContinue[node_DRNode] := Message[SolveAllOffsetsContinue::nstart, node] 
+(* Extends DRPLAN`Solver`ToPlanSolution *)
+ToPlanSolution[OffsetSolution[{nodeSolutions__NodeSolution}, __]] :=
+    ToPlanSolution /@ {nodeSolutions}
+
+
+Options[SolveAllOffsetsStart] = {
+    "ConfigPath" :> $ConfigPath,
+    "StopAtSolution" -> True,
+    "AllCFlip" -> False,
+    "Offsets" -> {1} (* used in SolveAllOffsetsContinue *)
+}
+
+Options[SolveAllOffsetsContinue] = {
+    "ConfigPath" :> $ConfigPath,
+    "StopAtSolution" -> True
+}
+
 (* Solve all offsets *)
-SolveAllOffsetsStart[root_DRNode, offsets:{__?NumericQ}] := With[
+SolveAllOffsetsStart[root_DRNode, offsets:{__?NumericQ}, o:OptionsPattern[]] := Module[
     {
-        offsetPQ = priorityQueue[]
+        offsetPQ = priorityQueue[],
+        (* options *)
+        dumpPath
     },
 
-    SolveAllLeaves[offsetPQ, root];
+    {dumpPath} = OptionValue[SolveAllOffsetsStart, {o}, {"ConfigPath"}];
 
-    SolveAllOffsetsContinue[root] := (
-        While[!SolveOneOffset[offsetPQ, DeQueue[offsetPQ], offsets],
-            Echo[Size[offsetPQ], "Current Queue Size"]
-        ];
-        root["OffsetSolutions"]
-    );
+    SolveAllLeaves[offsetPQ, root, FilterRules[{o}, Options[SolveAllLeaves]]];
+
+    ConfigSave[offsetPQ, {"Offsets" -> offsets, o}, dumpPath];
 
     SolveAllOffsetsContinue[root]
 ]
 
 
-SolveAllLeaves[offsetPQ_?qQ, node_DRNode] := (
+SolveAllOffsetsContinue::nstart = "The solving for `1` has not start yet, please call SolveAllOffsetsStart[`1`, offsets]."
+SolveAllOffsetsContinue[root_DRNode, o:OptionsPattern[]] := Module[
+    {
+        offsetPQ, rootSolutionQ = False, solvingOptions, offsets, stopAtSolution,
+        (* options *)
+        dumpPath
+    },
+
+    {dumpPath} = OptionValue[SolveAllOffsetsContinue, {o}, {"ConfigPath"}];
+
+    {offsetPQ, solvingOptions} = ConfigLoad[dumpPath];
+
+    {offsets, stopAtSolution} = OptionValue[SolveAllOffsetsStart, {solvingOptions}, {"Offsets", "StopAtSolution"}];
+
+    (* Overwrite options from SolveAllOffsetsStart *)
+    FilterRules[{o}, "StopAtSolution"]
+    // Replace[{"StopAtSolution" -> stop_?BooleanQ} :> (stopAtSolution = stop)];
+
+    While[Size[offsetPQ] > 0 && (!stopAtSolution || !rootSolutionQ),
+        rootSolutionQ = SolveOneOffset[offsetPQ, DeQueue[offsetPQ], offsets];
+        NotebookDelete[$tempPrint];
+        $tempPrint = PrintTemporary[
+            "Current Queue Size: ", offsetPQ, "\n",
+            "Current Solution Size: ", Length[root["OffsetSolutions"]]
+        ];
+        AbortProtect[
+            ConfigSave[offsetPQ, solvingOptions, dumpPath];
+        ]
+    ]
+
+]
+
+
+Options[SolveAllLeaves] = {
+    "AllCFlip" -> False
+}
+
+SolveAllLeaves[offsetPQ_?qQ, node_DRNode, o:OptionsPattern[]] := Module[
+    {
+        cayleyVertex, rootgraph, allCFlip
+    },
+
+    {allCFlip} = OptionValue[SolveAllLeaves, {o}, {"AllCFlip"}];
 
     If[node["IsCayleyNode"],
+        rootgraph = node["Root"]["Graph"];
+        cayleyVertex = Max @@ (Part[
+            EdgeList[rootgraph],
+            node["TargetCayley"]
+        ]);
         node["OffsetSolutions"] = {OffsetSolution[
             {NodeSolution[
                 <|node["TargetCayley"] -> (First @* (Curry[Through[#1[#2]]&, 2][Lookup /@ node["FreeCayley"]]))|>, (* identity function *)
                 <|node["TargetCayley"] -> node["Interval"]|>, (* domain *)
                 {1}, (* D-flip index *)
                 <||> (* overwriting C-flip*)
+            ],
+            If[allCFlip,
+                NodeSolution[
+                    <|node["TargetCayley"] -> (First @* (Curry[Through[#1[#2]]&, 2][Lookup /@ node["FreeCayley"]]))|>, (* identity function *)
+                    <|node["TargetCayley"] -> node["Interval"]|>, (* domain *)
+                    {1}, (* D-flip index *)
+                    <|cayleyVertex -> !PropertyValue[{rootgraph, cayleyVertex}, "Flip"]|> (* overwriting the C-flip*)
+                ],
+                Nothing
             ]}, (* One DFlip *)
             <||>, (* No Offsets *)
             node (* corresponding node *)
@@ -161,12 +272,12 @@ SolveAllLeaves[offsetPQ_?qQ, node_DRNode] := (
 
         Table[
             subNode["Parents"] = Union[subNode["Parents"], {node}];
-            SolveAllLeaves[offsetPQ, subNode],
+            SolveAllLeaves[offsetPQ, subNode, o],
             {subNode, node["SubNodes"]}
         ];
     ]
 
-)
+]
 
 
 SolveOneOffset[
@@ -183,7 +294,7 @@ SolveOneOffset[
     },
 
     oldOffsetSolutions = node["OffsetSolutions"];
-    node["OffsetSolutions"] = Echo[#, "OffsetSolutions"]& @ Table[
+    node["OffsetSolutions"] = (*Echo[#, "OffsetSolutions"]& @*) Table[
         newDropOffsets = If[dropOffset == 1,
             dropOffsets,
             Append[dropOffsets, node["TargetDrop"] -> dropOffset]
