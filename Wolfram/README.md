@@ -23,6 +23,10 @@ For output, it will search and return all the realization.
     - [Introduction](#introduction)
     - [Requirements](#requirements)
     - [Usages](#usages)
+        - [Solve A DR-Plan](#solve-a-dr-plan)
+        - [Visualization](#visualization)
+        - [Offset Solver](#offset-solver)
+        - [DFS Solver](#dfs-solver)
     - [Features](#features)
         - [Refined Sampling](#refined-sampling)
         - [Bead Threading](#bead-threading)
@@ -52,12 +56,14 @@ For output, it will search and return all the realization.
 
 ## Usages
 
-1. Open a new notebook (.nb) in Mathematica, and paste the following code.
+### Solve A DR-Plan
+
+Open a new notebook (.nb) in Mathematica, and paste the following code.
 ```Mathematica
 (* import the code *)
 << "/path/to/DRPLAN/Wolfram/init.wls";
 (* import the graph *)
-exampleDRPlan = DRPLAN`NewDRNode["/path/to/graphviz_file.dot"];
+exampleDRPlan = NewDRNode["/path/to/graphviz_file.dot"];
 (* generate DR-Plan according to the graph *)
 GenerateDRPlan[exampleDRPlan];
 (* flip the clock-wise constructed vertices *)
@@ -69,17 +75,53 @@ SolveDRPlan[exampleDRPlan]
 ```
 ![PrintDRPlan](./images/PrintDRPlan.svg)
 
-2. After you get the solution in `Association` form, use `AnalyzeSolution` to see the result graph.  
-```Mathematica
+#### Partial Results
+
+To save the intermediate results from `SolveDRPlan`, you may access the solutions of
+a particular node using downvalue, assign it to a variable and save it to a
+file. To load it just load and assign it back to the downvalue. Remember to set
+`"Reevaluate"` option to `False` (Default).
+
+``` mathematica
+(* Assume that the DRNode[$8] is already solved. *)
+(* save to file *)
+DRNode8Solutions = DRNode[$8]["Solutions"];
+DumpSave["/path/to/solution.mx", DRNode8Solutions];
+
+(* load from file *)
+Get["/path/to/solution.mx"]
+DRNode[$8]["Solutions"] = DRNode8Solutions;
+
+SolveDRPlan[exampleDRPlan, "Reevaluate" -> False] (* leverage saved solutions *)
+
+(* Or just run the following function as long as False is the default value for "Reevaluate". *)
+SolveDRPlan[exampleDRPlan]
+```
+
+### Visualization
+
+After you get the solution in `Association` form, use `AnalyzeSolution` to see the result graph.  
+``` mathematica
 AnalyzeSolution[exampleDRPlan, 
     <|54 -> 290.85, 53 -> 299.48, 55 -> 428.20, 56 -> 627.10, 57 -> 781.22, 58 -> 283.02, 59 -> 310.26, 60 -> 450.93, 61 -> 602.52, 62 -> 756.48, 63 -> 898.29, 64 -> 1037.55, 65 -> 263.81, 66 -> 283.26, 67 -> 425.22, 68 -> 605.50, 69 -> 762.23, 70 -> 908.12, 71 -> 1046.99, 72 -> 1190.59, 73 -> 1331.90|>
 ]
+
+(* or *)
+
+AnalyzeSolution[exampleDRPlan, #]& /@ exampleDRPlan["Solutions"]
 ```
 ![AnalyzeSolution](./images/AnalyzeSolution.svg)
 
-3. You may also want to allow some offset for dropped edges, and perform a
+#### Private variables for visualization
+If you need to use the plot functions to plot the sample points, please enable
+the `SowSampleList` option in `SolveNode`, so the sample points will be
+collected in ``DRPLAN`Solver`Private`$sampleLists``.
+
+### Offset Solver
+
+You may also want to allow some offset for dropped edges, and perform a
 priority search.
-```Mathematica
+``` mathematica
 (*
     Start searching for solutions by allow the length of
     the dropped edge multiplied by one of the given factors
@@ -88,9 +130,48 @@ SolveAllOffsetsStart[exampleDRPlan, {1, 0.95, 1.05}]
 ```
 After you get the result, you may continue your search for less
 prioritized results.
-```Mathematica
+``` mathematica
 (* Continue the last search for the specified DR-Plan *)
 SolveAllOffsetsContinue[exampleDRPlan]
+```
+
+There are some options you may want to specify:
+  - "ConfigPath": the path to place options and intermediate status.
+  - "StopAtSolution": whether to stop after a solution is found. You may
+    continue to solve afterwards.
+  - "AllCFlip": whether to search for cayley flips.
+  
+The results are stored in the `OffsetSolutions` downvalue use `ToPlanSolution`
+to convert it.
+
+``` mathematica
+AnalyzeSolution[exampleDRPlan, ToPlanSolution[#]]& /@ exampleDRPlan["OffsetSolutions"]
+```
+
+### DFS Solver
+
+Sometimes, DFS is preferred to the default BFS strategy used by
+
+   `SolveNode`. Thus, you may want to call `DFSSolvingStart` and `DFSSolvingContinue`
+   which resemble the machanism of Offset Solver.
+
+``` mathematica
+DFSSolvingStart[exampleDRPlan]
+(* or *)
+DFSSolvingContinue[exampleDRPlan]
+```
+
+There are some options you may want to specify:
+  - "ConfigPath": the path to place options and intermediate status.
+  - "StopAtSolution": whether to stop after a solution is found. You may
+    continue to solve afterwards.
+  - "AllCFlip": whether to search for cayley flips.
+  
+The results are stored in the `DFSSolutions` downvalue use `ToPlanSolution`
+to convert it.
+
+``` mathematica
+AnalyzeSolution[exampleDRPlan, ToPlanSolution[#]]& /@ exampleDRPlan["DFSSolutions"]
 ```
 
 
@@ -115,6 +196,12 @@ bin.
 
 ![RefinedSamplingContour](./images/RefineSamplingContour.svg)
 
+These two plots are generated from `$sampleLists` using `ListPointPlot3D` and `ListContourPLot`.
+
+``` mathematica
+ListPointPlot3D[Flatten[Part[$sampleLists, 1], 1]]
+ListContourPlot[Flatten[Part[$sampleLists, 1], 1], PlotLegends -> Automatic]
+```
 
 ### Bead Threading
 
@@ -123,6 +210,26 @@ D-Flips or dropped flips). We try to categorize them into different flips using
 both the distance and derivatives information.
 
 ![BeadThreading](./images/BeadThreading.svg)
+
+This plot is generated from `finalSamples` and `finalResults` in `SolveDFlip` using `Plot`.
+
+``` mathematica
+With[
+    {
+        zeros = SortBy[Flatten[MapThread[
+            Outer[Prepend, #2, {#1}, 1, 1] &,
+            {
+                Select[finalSamples, Not@*MissingQ],
+                Part[Select[finalResults, Not@*MissingQ], All, 1]
+            }
+        ], 2], First]
+    },
+    {
+        ListPointPlot3D[zeros, ColorFunction -> Function[{x, y, z}, If[z > 0, Red, Blue]], ColorFunctionScaling -> False],
+        ListPlot[Part[zeros, All, {1, 2}]]
+    }
+]
+```
 
 
 ### Alternative Interpolation
