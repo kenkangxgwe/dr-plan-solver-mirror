@@ -567,6 +567,8 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
 	},
 
     domain = Part[nodeSolution, 2];
+
+    (* generate sample points for free cayleys *)
     freeSamples = If[Length[node["FreeCayley"]] != 0,
         SparseArray[Values[getSamples /@ KeyTake[domain, First[node["FreeCayley"]]]]],
         Echo["Last Cayley"];
@@ -584,6 +586,7 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
     (* $on = False; *)
     firstSamples = If[node["FreeCayley"] === {},
         {<||>},
+        (* only handles flex-1 case*)
         First[freeSamples]
     ];
     (* If[$on, Echo[firstSamples]]; *)

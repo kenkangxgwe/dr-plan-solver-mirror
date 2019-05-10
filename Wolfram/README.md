@@ -24,7 +24,9 @@ For output, it will search and return all the realization.
     - [Requirements](#requirements)
     - [Usages](#usages)
         - [Solve A DR-Plan](#solve-a-dr-plan)
+            - [Partial Results](#partial-results)
         - [Visualization](#visualization)
+            - [Private variables for visualization](#private-variables-for-visualization)
         - [Offset Solver](#offset-solver)
         - [DFS Solver](#dfs-solver)
     - [Features](#features)
@@ -36,6 +38,7 @@ For output, it will search and return all the realization.
     - [Results](#results)
         - [Input DR-Plan](#input-dr-plan)
         - [Output DR-Plan](#output-dr-plan)
+    - [Roadmap](#roadmap)
 
 <!-- markdown-toc end -->
 
@@ -43,6 +46,8 @@ For output, it will search and return all the realization.
 ## Requirements
 
 - _Wolfram Mathematica_ (tested on 11.3)
+- Submodules updated with:  
+  `git submodule update --init --recursive`
 - Several graphviz (.dot) files where
     - vertices ordered in two tree construction order;
     - vertices have initial positions;
@@ -276,3 +281,26 @@ See `examples/hexlattice.zigzag-21.dot` in root folder.
 ### Output DR-Plan
 
 ![hexlat-21.solution](./images/hexlat-21.solution.svg) 
+
+## Compatibility
+
+Unless otherwise commented in the code, here is the compatibility of some main
+features:
+
+| Feature                             | Chain DR-Plan | Flex-1 | Higher Flex |
+| :-                                  | :-:           | :-:    | :-:         |
+| Generate DR-Node                    | ✔             |        |             |
+| Linear Programming                  | ✔             | ✔      | ✔           |
+| $(c\_0, c\_i, d\_i)$ sampling       | ✔             | ✔      | ✔           |
+| Refine sampling                     | ✔             | ✔      |             |
+| Interpolation function root finding | ✔             | ✔      |             |
+| Root threading                      | ✔             | ✔      |             |
+| Offset solving: `notifyParent`      | ✔             | ✔      | ✔           |
+| Offset solving: `ChainDiverseLevel` | ✔             |        |             |
+| DFS solving                         | ✔             | ✔      | ✔           |
+
+**Flex number** is the number of free variables at a DR-Node. **Flex-1** DR-Plan is
+the DR-Plan where the maximum flex number of the nodes is 1.
+
+**Chain DR-Plan** is a special flex-1 DR-Plan, where every node from root only has
+two children, one of which is a Cayley parameter.
