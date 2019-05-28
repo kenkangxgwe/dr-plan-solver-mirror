@@ -145,8 +145,7 @@ SimilarPlanQ[
 (* ::Subsection:: *)
 (*Immutable Type Definition*)
 
-
-DeclareType[DRNode, <|
+DataType`DeclareType[DRNode, <|
     "Root" -> _Association,
     "Graph" -> _Graph,
     "FreeCayley" -> _List,
