@@ -39,8 +39,11 @@ Needs["DRPLAN`Solver`"]
 (* ::Section:: *)
 (*Visualization*)
 
-
-DRNodeVRFunc[type_, Dynamic[selectedNode_]][rk_, vk_DRNode] := Block[
+(*
+    For VertexShapeFunction after 12.0,
+    and VertexRenderingFunction before 11.3
+*)
+DRNodeVSFunc[type_, Dynamic[selectedNode_]][rk_, vk_DRNode, _:Null] := Block[
     {
     },
 
@@ -67,12 +70,24 @@ DRNodeVRFunc[type_, Dynamic[selectedNode_]][rk_, vk_DRNode] := Block[
 ]
 
 
+With[
+{
+    vertexFunction = If[$VersionNumber >= 12,
+        VertexShapeFunction,
+        VertexRenderingFunction
+    ],
+    edgeFunction = If[$VersionNumber >= 12,
+        EdgeShapeFunction,
+        EdgeRenderingFunction
+    ]
+},
+
 PrintDRPlan[node_DRNode]:= DynamicModule[
     {
     },
 
     Manipulate[
-        With[{fn = Curry[DRNodeVRFunc][Dynamic[selectedNode]]},
+        With[{fn = Curry[DRNodeVSFunc][Dynamic[selectedNode]]},
         Row[{
             Column[{
                 Grid[{{
@@ -80,8 +95,8 @@ PrintDRPlan[node_DRNode]:= DynamicModule[
                     LayeredGraphPlot[
                         node["PlanRules"],
                         Top,
-                        VertexRenderingFunction -> fn[nodeType],
-                        EdgeRenderingFunction -> ({Dashed, Opacity[.5], Line[#1]}&),
+                        vertexFunction -> fn[nodeType],
+                        edgeFunction -> ({Dashed, Opacity[.5], Line[#1]}&),
                         ImageSize -> 100
                     ],
                     Column[{
@@ -135,6 +150,7 @@ PrintDRPlan[node_DRNode]:= DynamicModule[
         {{trackQ, False, "Track Node?"}, {True, False}},
         {{solveQ, False, "Solve Node?"}, {True, False}}
     ]
+]
 ]
 
 
