@@ -219,7 +219,7 @@ SolveAllOffsetsContinue[root_DRNode, o:OptionsPattern[]] := Module[
         rootSolutionQ = SolveOneOffset[offsetPQ, DeQueue[offsetPQ], offsets];
         NotebookDelete[$tempPrint];
         $tempPrint = PrintTemporary[
-            "Current Queue Size: ", offsetPQ, "\n",
+            "Current Queue Size: ", Size[offsetPQ], "\n",
             "Current Solution Size: ", Length[root["OffsetSolutions"]]
         ];
         AbortProtect[
