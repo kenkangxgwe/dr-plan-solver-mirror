@@ -118,14 +118,14 @@ DFSSolvingStart[root_DRNode, o:OptionsPattern[]] := Module[
 DFSSolvingContinue::nstart = "The solving for `1` has not start yet, please call DFSSolveStart[`1`]."
 DFSSolvingContinue[root_DRNode, o:OptionsPattern[]] := Module[
     {
-        stack, rootSolutionQ = False,
+        stack, rootSolutionQ = False, solvingOptions,
         (* options *)
         dumpPath, stopAtSolution
     },
 
     {dumpPath, stopAtSolution} = OptionValue[DFSSolvingContinue, {o}, {"DumpPath", "StopAtSolution"}];
 
-    stack = ConfigLoad[dumpPath];
+    {stack, solvingOptions} = ConfigLoad[dumpPath];
 
     While[Size[stack] > 0 && (!stopAtSolution || !rootSolutionQ),
         rootSolutionQ = SolveOneFlip[stack, DeQueue[stack]];
@@ -146,7 +146,7 @@ Options[SolveAllLeaves] = {
     "AllCFlip" -> False
 }
 
-SolveAllLeaves[stack_?qQ, node_DRNode, o:OptionsPattern] := Module[
+SolveAllLeaves[stack_?qQ, node_DRNode, o:OptionsPattern[]] := Module[
     {
         cayleyVertex, rootgraph, allCFlip
     },
