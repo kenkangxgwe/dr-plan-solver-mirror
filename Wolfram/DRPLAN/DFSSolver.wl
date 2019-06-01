@@ -47,13 +47,14 @@ StackDeserialize[stack_SerializedQueue] := Copy[Parallel`Queue`LIFO`Private`queu
 $ConfigPath = "DFS_Solution_Stack.mx"
 
 (* Block must be used here *)
-ConfigSave[stack_?qQ, options:{OptionsPattern[]}, path_String] := Block[
+ConfigSave[stack_?qQ, options:{OptionsPattern[]}, solutions_, path_String] := Block[
     {
-        serializedQueue, solvingOptions
+        serializedQueue, solvingOptions, dfsSolutions
     },
     serializedQueue = StackSerialize[stack];
     solvingOptions = options;
-    DumpSave[path, {serializedQueue, solvingOptions}];
+    dfsSolutions = solutions;
+    DumpSave[path, {serializedQueue, solvingOptions, dfsSolutions}];
 ]
 
 ConfigLoad::invcfg = "Invalid config file at `1`"
@@ -61,13 +62,14 @@ ConfigLoad::invcfg = "Invalid config file at `1`"
 ConfigLoad[path_String] := Block[
     {
         (* Variable names must be same as in ConfigSave *)
-        serializedQueue, solvingOptions
+        serializedQueue, solvingOptions, dfsSolutions
     },
 
     Get[path];
     {
         StackDeserialize[serializedQueue],
-        solvingOptions
+        solvingOptions,
+        dfsSolutions
     } // Replace[{
         Except[{_?qQ, OptionsPattern[]}] :> (
             Message[ConfigLoad::invcfg, path];
@@ -109,7 +111,7 @@ DFSSolvingStart[root_DRNode, o:OptionsPattern[]] := Module[
 
     SolveAllLeaves[stack, root, FilterRules[{o}, Options[SolveAllLeaves]]];
 
-    ConfigSave[stack, {o}, dumpPath];
+    ConfigSave[stack, {o}, root["DFSSolutions"], dumpPath];
 
     DFSSolvingContinue[root]
 
@@ -125,7 +127,7 @@ DFSSolvingContinue[root_DRNode, o:OptionsPattern[]] := Module[
 
     {dumpPath, stopAtSolution} = OptionValue[DFSSolvingContinue, {o}, {"DumpPath", "StopAtSolution"}];
 
-    {stack, solvingOptions} = ConfigLoad[dumpPath];
+    {stack, solvingOptions, root["DFSSolutions"]} = ConfigLoad[dumpPath];
 
     While[Size[stack] > 0 && (!stopAtSolution || !rootSolutionQ),
         rootSolutionQ = SolveOneFlip[stack, DeQueue[stack]];
@@ -135,7 +137,7 @@ DFSSolvingContinue[root_DRNode, o:OptionsPattern[]] := Module[
             "Current Solution Size: ", Length[root["DFSSolutions"]]
         ];
         AbortProtect[
-            ConfigSave[stack, solvingOptions, dumpPath];
+            ConfigSave[stack, solvingOptions, root["DFSSolutions"], dumpPath];
         ]
     ]
 

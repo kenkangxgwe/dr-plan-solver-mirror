@@ -48,13 +48,14 @@ QueueDeserialize[queue_SerializedQueue] := Copy[Parallel`Queue`Priority`Private`
 $ConfigPath = "Offset_Solution_PQueue.mx"
 
 (* Block must be used here *)
-ConfigSave[queue_?qQ, options:{OptionsPattern[]}, path_String] := Block[
+ConfigSave[queue_?qQ, options:{OptionsPattern[]}, solutions_, path_String] := Block[
     {
-        serializedQueue, solvingOptions
+        serializedQueue, solvingOptions, offsetSolutions
     },
     serializedQueue = QueueSerialize[queue];
     solvingOptions = options;
-    DumpSave[path, {serializedQueue, solvingOptions}];
+    offsetSolutions = solutions;
+    DumpSave[path, {serializedQueue, solvingOptions, offsetSolutions}];
 ]
 
 ConfigLoad::invcfg = "Invalid config file at `1`"
@@ -62,13 +63,14 @@ ConfigLoad::invcfg = "Invalid config file at `1`"
 ConfigLoad[path_String] := Block[
     {
         (* Variable names must be same as in ConfigSave *)
-        serializedQueue, solvingOptions
+        serializedQueue, solvingOptions, offsetSolutions
     },
 
     Get[path];
     {
         QueueDeserialize[serializedQueue],
-        solvingOptions
+        solvingOptions,
+        offsetSolutions
     } // Replace[{
         Except[{_?qQ, OptionsPattern[]}] :> (
             Message[ConfigLoad::invcfg, path];
@@ -191,7 +193,7 @@ SolveAllOffsetsStart[root_DRNode, offsets:{__?NumericQ}, o:OptionsPattern[]] := 
 
     SolveAllLeaves[offsetPQ, root, FilterRules[{o}, Options[SolveAllLeaves]]];
 
-    ConfigSave[offsetPQ, {"Offsets" -> offsets, o}, dumpPath];
+    ConfigSave[offsetPQ, {"Offsets" -> offsets, o}, root["OffsetSolutions"], dumpPath];
 
     SolveAllOffsetsContinue[root]
 ]
@@ -207,7 +209,7 @@ SolveAllOffsetsContinue[root_DRNode, o:OptionsPattern[]] := Module[
 
     {dumpPath} = OptionValue[SolveAllOffsetsContinue, {o}, {"ConfigPath"}];
 
-    {offsetPQ, solvingOptions} = ConfigLoad[dumpPath];
+    {offsetPQ, solvingOptions, root["OffsetSolutions"]} = ConfigLoad[dumpPath];
 
     {offsets, stopAtSolution} = OptionValue[SolveAllOffsetsStart, {solvingOptions}, {"Offsets", "StopAtSolution"}];
 
@@ -223,7 +225,7 @@ SolveAllOffsetsContinue[root_DRNode, o:OptionsPattern[]] := Module[
             "Current Solution Size: ", Length[root["OffsetSolutions"]]
         ];
         AbortProtect[
-            ConfigSave[offsetPQ, solvingOptions, dumpPath];
+            ConfigSave[offsetPQ, solvingOptions, root["OffsetSolutions"], dumpPath];
         ]
     ]
 
