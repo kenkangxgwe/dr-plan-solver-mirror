@@ -195,7 +195,7 @@ HighlightNode[node_DRNode] := Module[
 
 trackNode[node_DRNode] := Module[
     {
-        nodeSolutions, testFunc
+        nodeSolutions
     },
 
     If[node =!= Null && !node["IsCayleyNode"],
@@ -216,7 +216,7 @@ modifyGraph[graph_Graph] := (
 
 NodeManipulateRenderingFunction[node_DRNode, nodeSolution_NodeSolution, freeCayleys_Association] := Module[
     {
-        solution, graph, cayleyLength, cayleyEdges, droppedEdge, visualCayleyLength
+        graph, cayleyLength, cayleyEdges, droppedEdge, visualCayleyLength
     },
 
     cayleyLength = (#[freeCayleys]&) /@ First[nodeSolution];
@@ -240,7 +240,7 @@ NodeManipulateRenderingFunction[node_DRNode, nodeSolution_NodeSolution, freeCayl
 
 AnalyzeNode[node_DRNode, nodeSolution_NodeSolution] := Module[
     {
-        domain, cayleys, vars, labels, mins, maxs, refinedDomain
+        domain, cayleys, vars, labels, mins, maxs(*, refinedDomain*)
     },
 
     domain = Part[nodeSolution, 2];

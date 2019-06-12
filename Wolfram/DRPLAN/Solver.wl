@@ -184,13 +184,10 @@ SolveDRPlan[node_DRNode, o:OptionsPattern[]] := (
     ToPlanSolution /@ SolveNode[node, All, o]
 )
 
-ToPlanSolution[nodeSolution_NodeSolution] := Module[
-    {
-      solution, cFlip
-    },
-    solution = Part[nodeSolution, 1];
-    PlanSolution[(#[{}]&) /@ solution, Part[nodeSolution, 3], Part[nodeSolution, 4]]
-]
+ToPlanSolution[nodeSolution_NodeSolution] := (
+
+    PlanSolution[(#[{}]&) /@ Part[nodeSolution, 1], Part[nodeSolution, 3], Part[nodeSolution, 4]]
+)
 
 (*
     Options:
@@ -372,7 +369,6 @@ calcCoordsImpl[node_DRNode, CayleyLength_Association, CayleyFlip_Association][
     {
         rootgraph = node["Root"]["Graph"],
         (* vertices *) v1, v2,
-        (* edges *) e1, e2,
         (* coordinates *) c1, c2,
         (* distances between vertices *) d0, d1, d2,
         (* difference between coordinates *) dx, dy, dd,
@@ -459,7 +455,7 @@ dropLength[node_DRNode] := With[
 
 dropDiff[node_DRNode, graph_Graph] := Module[
     {
-        rootgraph = node["Root"]["Graph"], dropEdge, CayleyLength
+        rootgraph = node["Root"]["Graph"], dropEdge
     },
 
     dropEdge = EdgeList[rootgraph][[node["TargetDrop"]]];
@@ -558,11 +554,11 @@ SolveDFlip::nosolplan = "no solution for the dr-plan.";
 (* This function solves the given dropped flip. *)
 SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := Module[
     {
-        domain, freeSamples, interpolant,
-        incList, decList, time, firstSamples, firstResults,
-        resampleTargets, resampleList, nearRatio = 0.30, nearZerosIntervals,
+        domain, freeSamples,
+        firstSamples, firstResults,
+        nearRatio = 0.30, nearZerosIntervals,
         refinedFreeSamples, refinedResults,
-        secondSamples, secondResults, finalSamples, finalResults
+        finalSamples, finalResults
 	},
 
     domain = Part[nodeSolution, 2];
@@ -642,7 +638,7 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
 scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][freeSample_Association] := Module[
     {
         solution, domain, tFlip,
-        refinedDomain, targetSamples, cayleyLength,
+        refinedDomain, targetSamples,
         sampleList, approxIntervals, targetRefinedSamples, refinedSampleList,
         threshold, zeroThreshold, zeroIntervals, approxZeros, interp, interpd, tmpZeros
     },
@@ -741,7 +737,7 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
             )],
             tmpZeros = {}
         ]
-    ]
+    ];
 
     If[Length[node["FreeCayley"]] == 0,
         (* Echo[sampleList, "SampleList"]; *)
