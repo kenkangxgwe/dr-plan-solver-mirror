@@ -72,7 +72,7 @@ ConfigLoad[path_String] := Block[
         solvingOptions,
         offsetSolutions
     } // Replace[{
-        Except[{_?qQ, OptionsPattern[]}] :> (
+        Except[{_?qQ, {OptionsPattern[]}, _}] :> (
             Message[ConfigLoad::invcfg, path];
             Abort[]
         )
@@ -178,7 +178,8 @@ Options[SolveAllOffsetsStart] = {
 
 Options[SolveAllOffsetsContinue] = {
     "ConfigPath" :> $ConfigPath,
-    "StopAtSolution" -> True
+    "StopAtSolution" -> True,
+    "Offsets" -> {1}
 }
 
 (* Solve all offsets *)
@@ -186,14 +187,14 @@ SolveAllOffsetsStart[root_DRNode, offsets:{__?NumericQ}, o:OptionsPattern[]] := 
     {
         offsetPQ = priorityQueue[],
         (* options *)
-        dumpPath
+        configPath
     },
 
-    {dumpPath} = OptionValue[SolveAllOffsetsStart, {o}, {"ConfigPath"}];
+    {configPath} = OptionValue[SolveAllOffsetsStart, {o}, {"ConfigPath"}];
 
     SolveAllLeaves[offsetPQ, root, FilterRules[{o}, Options[SolveAllLeaves]]];
 
-    ConfigSave[offsetPQ, {"Offsets" -> offsets, o}, root["OffsetSolutions"], dumpPath];
+    ConfigSave[offsetPQ, {"Offsets" -> offsets, o}, root["OffsetSolutions"], configPath];
 
     SolveAllOffsetsContinue[root, FilterRules[{o}, Options[SolveAllOffsetsContinue]]]
 ]
@@ -204,12 +205,12 @@ SolveAllOffsetsContinue[root_DRNode, o:OptionsPattern[]] := Module[
     {
         offsetPQ, rootSolutionQ = False, solvingOptions, offsets, stopAtSolution,
         (* options *)
-        dumpPath
+        configPath
     },
 
-    {dumpPath} = OptionValue[SolveAllOffsetsContinue, {o}, {"ConfigPath"}];
+    {configPath} = OptionValue[SolveAllOffsetsContinue, {o}, {"ConfigPath"}];
 
-    {offsetPQ, solvingOptions, root["OffsetSolutions"]} = ConfigLoad[dumpPath];
+    {offsetPQ, solvingOptions, root["OffsetSolutions"]} = ConfigLoad[configPath];
 
     {offsets, stopAtSolution} = OptionValue[SolveAllOffsetsStart, {solvingOptions}, {"Offsets", "StopAtSolution"}];
 
@@ -225,7 +226,7 @@ SolveAllOffsetsContinue[root_DRNode, o:OptionsPattern[]] := Module[
             "Current Solution Size: ", Length[root["OffsetSolutions"]]
         ];
         AbortProtect[
-            ConfigSave[offsetPQ, solvingOptions, root["OffsetSolutions"], dumpPath];
+            ConfigSave[offsetPQ, solvingOptions, root["OffsetSolutions"], configPath];
         ]
     ]
 

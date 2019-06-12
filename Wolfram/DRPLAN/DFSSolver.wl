@@ -71,7 +71,7 @@ ConfigLoad[path_String] := Block[
         solvingOptions,
         dfsSolutions
     } // Replace[{
-        Except[{_?qQ, OptionsPattern[]}] :> (
+        Except[{_?qQ, {OptionsPattern[]}, _}] :> (
             Message[ConfigLoad::invcfg, path];
             Abort[]
         )
@@ -89,13 +89,13 @@ ToPlanSolution[DFSSolution[nodeSolution_NodeSolution, _]] :=
 
 
 Options[DFSSolvingStart] = {
-    "DumpPath" :> $ConfigPath,
+    "ConfigPath" :> $ConfigPath,
     "StopAtSolution" -> False,
     "AllCFlip" -> False
 }
 
 Options[DFSSolvingContinue] = {
-    "DumpPath" :> $ConfigPath,
+    "ConfigPath" :> $ConfigPath,
     "StopAtSolution" -> False
 }
 
@@ -104,14 +104,14 @@ DFSSolvingStart[root_DRNode, o:OptionsPattern[]] := Module[
     {
         stack = LIFOQueue[],
         (* options *)
-        dumpPath
+        configPath
     },
 
-    {dumpPath} = OptionValue[DFSSolvingStart, {o}, {"DumpPath"}];
+    {configPath} = OptionValue[DFSSolvingStart, {o}, {"ConfigPath"}];
 
     SolveAllLeaves[stack, root, FilterRules[{o}, Options[SolveAllLeaves]]];
 
-    ConfigSave[stack, {o}, root["DFSSolutions"], dumpPath];
+    ConfigSave[stack, {o}, root["DFSSolutions"], configPath];
 
     DFSSolvingContinue[root, FilterRules[{o}, Options[DFSSolvingContinue]]]
 
@@ -122,12 +122,12 @@ DFSSolvingContinue[root_DRNode, o:OptionsPattern[]] := Module[
     {
         stack, rootSolutionQ = False, solvingOptions,
         (* options *)
-        dumpPath, stopAtSolution
+        configPath, stopAtSolution
     },
 
-    {dumpPath, stopAtSolution} = OptionValue[DFSSolvingContinue, {o}, {"DumpPath", "StopAtSolution"}];
+    {configPath, stopAtSolution} = OptionValue[DFSSolvingContinue, {o}, {"ConfigPath", "StopAtSolution"}];
 
-    {stack, solvingOptions, root["DFSSolutions"]} = ConfigLoad[dumpPath];
+    {stack, solvingOptions, root["DFSSolutions"]} = ConfigLoad[configPath];
 
     While[Size[stack] > 0 && (!stopAtSolution || !rootSolutionQ),
         rootSolutionQ = SolveOneFlip[stack, DeQueue[stack]];
@@ -137,7 +137,7 @@ DFSSolvingContinue[root_DRNode, o:OptionsPattern[]] := Module[
             "Current Solution Size: ", Length[root["DFSSolutions"]]
         ];
         AbortProtect[
-            ConfigSave[stack, solvingOptions, root["DFSSolutions"], dumpPath];
+            ConfigSave[stack, solvingOptions, root["DFSSolutions"], configPath];
         ]
     ]
 
