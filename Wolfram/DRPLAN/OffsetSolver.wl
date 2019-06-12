@@ -195,7 +195,7 @@ SolveAllOffsetsStart[root_DRNode, offsets:{__?NumericQ}, o:OptionsPattern[]] := 
 
     ConfigSave[offsetPQ, {"Offsets" -> offsets, o}, root["OffsetSolutions"], dumpPath];
 
-    SolveAllOffsetsContinue[root]
+    SolveAllOffsetsContinue[root, FilterRules[{o}, Options[SolveAllOffsetsContinue]]]
 ]
 
 

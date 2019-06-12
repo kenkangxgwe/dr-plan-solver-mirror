@@ -113,7 +113,7 @@ DFSSolvingStart[root_DRNode, o:OptionsPattern[]] := Module[
 
     ConfigSave[stack, {o}, root["DFSSolutions"], dumpPath];
 
-    DFSSolvingContinue[root]
+    DFSSolvingContinue[root, FilterRules[{o}, Options[DFSSolvingContinue]]]
 
 ]
 
