@@ -67,7 +67,7 @@ ImportGraphviz[dotfile_String, o:OptionsPattern[]] := Module[
 		graphVertList = ToExpression[Import[dotfile, "VertexList"]],
 		graphEdgeList = (ToExpression[First[#]] <-> ToExpression[Last[#]])& /@ EdgeList[Import[dotfile, "Graph"]],
 		coordMap, colorMap, edgeTypeMap, boundaryMap,
-		edgeCustomProps, edgeWeight, edgeStyle, vertexCustomProps, fullGraph,
+		edgeCustomProps, edgeWeight, edgeStyle, vertexCustomProps, (*fullGraph,*)
 		(* options *)
 		importRealization, importColor
 	},

@@ -34,6 +34,7 @@ DRNode::usage = "DRNode[$n][\"property\"] returns the specified property of give
 NewDRNode::usage = "NewDRNode[dotfile_String] returns the root node of a DR-Plan tree, according to the specified dotfile path."
 GenerateDRPlan::usage = "GenerateDRPlan[node_DRNode] constructs the DR-Plan for given root node."
 FlipAt::usage = "FlipAt[node_DRNode, vertices_List] flips given vertices in the list for given root node."
+ModifyBoundaries::usage = "ModifyBoundaries[node_DRNode, rate_?NumericQ] modifies the lengths of all the boundaries in the DR-plan by a rate."
 
 
 Begin["`Private`"]
@@ -207,6 +208,25 @@ GenerateDRNodeImpl[{node_DRNode, edgeIndex_Integer?NonNegative, dropCounter_Inte
         "Add" :> GenerateDRNodeImpl[{node, edgeIndex - 1, dropCounter}, {Prepend[freeCayley, rootEdgeIndex], subNodes}],
         "Partial" :> GenerateDRNodeImpl[{node, edgeIndex - 1, dropCounter}, {freeCayley, subNodes}]
     }]
+]
+
+
+(* ::Section:: *)
+(*Boundary Modifier*)
+
+
+ModifyBoundaries[node_DRNode, rate_?NumericQ] := Module[
+    {
+        rootgraph = node["Root"]["Graph"]
+    },
+
+    Table[
+        PropertyValue[{rootgraph, boundary}, EdgeWeight] = PropertyValue[{rootgraph, boundary}, EdgeWeight] * rate,
+        {boundary, Select[EdgeList[rootgraph], PropertyValue[{rootgraph, #}, "BoundaryQ"]&]}
+    ];
+
+    node["Root"]["Graph"] = rootgraph;
+
 ]
 
 
