@@ -215,13 +215,21 @@ GenerateDRNodeImpl[{node_DRNode, edgeIndex_Integer?NonNegative, dropCounter_Inte
 (*Boundary Modifier*)
 
 
-ModifyBoundaries[node_DRNode, rate_?NumericQ] := Module[
+ModifyBoundaries::notpos = "The length of the edge `1` is set to a non-positve value."
+ModifyBoundaries[node_DRNode, modifier_] := Module[
     {
         rootgraph = node["Root"]["Graph"]
     },
 
     Table[
-        PropertyValue[{rootgraph, boundary}, EdgeWeight] = PropertyValue[{rootgraph, boundary}, EdgeWeight] * rate,
+        PropertyValue[{rootgraph, boundary}, EdgeWeight] = (
+            PropertyValue[{rootgraph, boundary}, EdgeWeight]
+            // modifier
+            // Replace[value_?(Not@*Positive) :> (
+                Message[ModifyBoundaries::notpos, boundary];
+                value
+            )]
+        ),
         {boundary, Select[EdgeList[rootgraph], PropertyValue[{rootgraph, #}, "BoundaryQ"]&]}
     ];
 
