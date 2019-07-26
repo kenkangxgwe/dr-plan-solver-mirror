@@ -296,7 +296,10 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
                 Reap[SolveDFlip[nodeI, nodeSolution]],
                 {nodeSolution, nodeSolutions}
             ]
-        ] // Replace[{} -> {{}, {}}] // Transpose;
+        ] // Replace[{
+            {} -> {{}, {}},
+            solList_ -> Transpose[solList]
+        }];
         $sampleLists = Flatten[$sampleLists, 1];
 
         (* Memoization *)
