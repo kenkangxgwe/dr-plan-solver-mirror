@@ -232,8 +232,6 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
     {reevaluate, allCFlip, sowSampleList, parallelize} =
         OptionValue[SolveNode, {o}, {"Reevaluate", "AllCFlip", "SowSampleList", "Parallelize"}];
 
-    $SowSampleList = sowSampleList;
-
     (* Print["Solving " <> ToString[node]]; *)
     If[node["IsCayleyNode"],
         rootgraph = node["Root"]["Graph"];
@@ -283,6 +281,8 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
 
         (* Prepare Immutable data for parallelism*)
         nodeI = PersistDRNode[node];
+
+        $SowSampleList = sowSampleList;
 
         (* Solve a flip *)
         {solutions, $sampleLists} = If[parallelize, 
@@ -723,7 +723,7 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
     (* sampleLists = sampleList; *)
 
     (* To draw 3D points plot, uncomment the following line *)
-    If[$SowSampleList && Length[node["FreeCayley"]] > 0,
+    If[$SowSampleList,
         sampleList // ArrayRules // Most
         // Cases[({pos_} -> Pair[x_, y_]) :> {freeSample[First@node["FreeCayley"]], x, y}]
         // Sow
