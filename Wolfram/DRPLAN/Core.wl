@@ -53,7 +53,6 @@ Needs["GraphvizUtils`"]
 
 (* Some constants are declared here. *)
 $Epsilon = 2 * 10^(-5)
-ccwQ[p_List, q_List, r__List] := Det[Append[#, 1] & /@ {p, q, r}]
 
 
 (* ::Section:: *)

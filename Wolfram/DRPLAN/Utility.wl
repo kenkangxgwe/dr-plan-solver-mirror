@@ -29,6 +29,7 @@ ClearAll[Evaluate[Context[] <> "*"]]
 Displacement::usage = "Displacement[node_DRNode, node_DRNode] combines two realizations for the same linkage and draw displancement vectors."
 RigidityMatrix::usage = "RigidityMatrix[graph_Graph] returns the rigidity matrix."
 InfinitesimallyRigidQ::usage = "InfinitismallyRigidQ[graph_Graph] gives True if the input DRNode is infinitesimally rigid ."
+GetFlipVector::usage = "GetFlipVector[graph_Graph] gives a flip vector of the input graph."
 
 
 Begin["`Private`"]
@@ -123,6 +124,24 @@ InfinitesimallyRigidQ[graph_Graph] := With[
 
     (2 * VertexCount[graph] - MatrixRank[rigidityMatrix]) == 3
 ]
+
+
+GetFlipVector[graph_Graph] := (
+    graph
+    // VertexList
+    // Curry[Drop][2]
+    // Select[(v0 \[Function] (
+        AdjacencyList[graph, v0]
+        // Select[(# < v0 && PropertyValue[{graph, # <-> v0}, "EdgeType"] != "Drop")&]
+        // Prepend[v0]
+        // Map[PropertyValue[{graph, #}, VertexCoordinates]&]
+        // Apply[ccwQ]
+        // Negative
+    ))]
+)
+
+
+ccwQ[p_List, q_List, r__List] := Det[Append[#, 1] & /@ {p, q, r}]
 
 
 End[]
