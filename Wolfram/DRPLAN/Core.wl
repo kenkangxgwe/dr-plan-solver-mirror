@@ -34,7 +34,8 @@ DRNode::usage = "DRNode[$n][\"property\"] returns the specified property of give
 NewDRNode::usage = "NewDRNode[dotfile_String] returns the root node of a DR-Plan tree, according to the specified dotfile path."
 GenerateDRPlan::usage = "GenerateDRPlan[node_DRNode] constructs the DR-Plan for given root node."
 FlipAt::usage = "FlipAt[node_DRNode, vertices_List] flips given vertices in the list for given root node."
-ModifyBoundaries::usage = "ModifyBoundaries[node_DRNode, rate_?NumericQ] modifies the lengths of all the boundaries in the DR-plan by a rate."
+ModifyEdges::usage = "ModifyEdges[node_DRNode, modifier_] modifies the lengths of all the edges that satisfy criteria in the DR-plan by a function."
+ModifyBoundaries::usage = "ModifyBoundaries[node_DRNode, modifier] modifies the lengths of all the boundaries in the DR-plan by a function."
 
 
 Begin["`Private`"]
@@ -215,8 +216,8 @@ GenerateDRNodeImpl[{node_DRNode, edgeIndex_Integer?NonNegative, dropCounter_Inte
 (*Boundary Modifier*)
 
 
-ModifyBoundaries::notpos = "The length of the edge `1` is set to a non-positve value."
-ModifyBoundaries[node_DRNode, modifier_] := Module[
+ModifyEdges::negval = "The length of the edge `1` is set to a negative value."
+ModifyEdges[node_DRNode, modifier_, crit_:(True&)] := Module[
     {
         rootgraph = node["Root"]["Graph"]
     },
@@ -225,17 +226,21 @@ ModifyBoundaries[node_DRNode, modifier_] := Module[
         PropertyValue[{rootgraph, boundary}, EdgeWeight] = (
             PropertyValue[{rootgraph, boundary}, EdgeWeight]
             // modifier
-            // Replace[value_?(Not@*Positive) :> (
-                Message[ModifyBoundaries::notpos, boundary];
+            // Replace[value_?(Negative) :> (
+                Message[ModifyEdges::negval, boundary];
                 value
             )]
         ),
-        {boundary, Select[EdgeList[rootgraph], PropertyValue[{rootgraph, #}, "BoundaryQ"]&]}
+        {boundary, Select[EdgeList[node["Graph"]], crit]}
     ];
 
     node["Root"]["Graph"] = rootgraph;
 
 ]
+
+ModifyBoundaries[node_DRNode, modifier_] := (
+    ModifyEdge[node, modifier, PropertyValue[{node["Root"]["Graph"], #}, "BoundaryQ"]&]
+)
 
 
 (* ::Section:: *)
