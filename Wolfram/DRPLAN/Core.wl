@@ -52,7 +52,7 @@ Needs["GraphvizUtils`"]
 
 
 (* Some constants are declared here. *)
-$Epsilon = 2 * 10^(-5)
+$Epsilon = 0; 2 * 10^(-5)
 
 
 (* ::Section:: *)

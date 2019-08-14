@@ -423,8 +423,7 @@ calcCoordsImpl[node_DRNode, CayleyLength_Association, CayleyFlip_Association][
         (* Echo[t`$rd, "Refined Domain"];
         Echo[d0, "d0"];
         Echo[dd, "dd"];
-        Echo[md, "md"];
-        Echo[preLengths, "preLengths"]; *)
+        Echo[md, "md"]; *)
         (* Abort[]; *)
         (* Return["Unrealizable"]; *)
         {{(* stop recursion *)}, coordsList},
@@ -437,8 +436,19 @@ calcCoordsImpl[node_DRNode, CayleyLength_Association, CayleyFlip_Association][
 
         {
             {restVertices},
-            Append[coordsList,
-                v0 -> (- dd * md * {dx, dy} + {-1, 1} * sign * {dy, dx} * Sqrt[delta]) / d0^2 + {mx, my}
+            Append[
+                coordsList,
+                v0 -> Replace[(- dd * md * {dx, dy} + {-1, 1} * sign * {dy, dx} * Sqrt[delta]) / d0^2 + {mx, my},
+                    err:Except[{_?NumericQ, _?NumericQ}] :> (
+                        Echo[d0, "d0"];
+                        Echo[dd, "dd"];
+                        Echo[md, "md"];
+                        Echo[{v0, v1, v2}, "Vertices"];
+                        Echo[err, "Coordinates"];
+                        Echo[coordsList];
+                        Abort[]
+                    )
+                ]
             ]
         }
 
@@ -543,7 +553,7 @@ refineInterval[node_DRNode, TargetCayley_, CayleyLength_Association] := Module[
         ]
     ] /@ {UndirectedEdge[commonvertex, v1], UndirectedEdge[commonvertex, v2]};
 
-    Interval[{Abs[d1 - d2], d1 + d2}]
+    Interval[{Max[Abs[d1 - d2], $MachineEpsilon (* to avoid degeneracy *)], d1 + d2}]
 ]
 
 
