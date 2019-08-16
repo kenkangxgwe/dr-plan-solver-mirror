@@ -238,7 +238,7 @@ ModifyEdges[node_DRNode, modifier_, crit_:(True&)] := Module[
 ]
 
 ModifyBoundaries[node_DRNode, modifier_] := (
-    ModifyEdge[node, modifier, PropertyValue[{node["Root"]["Graph"], #}, "BoundaryQ"]&]
+    ModifyEdges[node, modifier, PropertyValue[{node["Root"]["Graph"], #}, "BoundaryQ"]&]
 )
 
 
