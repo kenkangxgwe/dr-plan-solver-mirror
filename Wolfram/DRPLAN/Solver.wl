@@ -298,7 +298,7 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
             ]
         ] // Replace[{
             {} -> {{}, {}},
-            solList_ -> Transpose[solList]
+            solList_ :> Transpose[solList]
         }];
         $sampleLists = Flatten[$sampleLists, 1];
 
