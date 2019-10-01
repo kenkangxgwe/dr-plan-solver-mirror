@@ -131,6 +131,7 @@ graph G {
   26--28 [color="gray", penwidth=1];
   08--16 [color="gray", penwidth=1];
   16--28 [color="gray", penwidth=1];
+  28--43 [color="gray", penwidth=1];
   53--55 [color="gray", penwidth=1];
   54--55 [color="gray", penwidth=1];
 
