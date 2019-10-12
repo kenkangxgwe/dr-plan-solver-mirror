@@ -289,7 +289,7 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
             ParallelTable[
                 Reap[SolveDFlip[nodeI, nodeSolution]],
                 {nodeSolution, nodeSolutions},
-                DistributedContexts -> {"DRPLAN`Core`", "DRPLAN`Solver`", "DataType`"},
+                DistributedContexts -> {"DRPLAN`Core`", "DRPLAN`Solver`", "DRPLAN`Thread`", "DataType`"},
                 Method -> "FinestGrained"
             ],
             Table[
