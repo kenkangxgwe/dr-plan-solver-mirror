@@ -166,9 +166,9 @@ ExportGraphviz[graph_Graph, o:OptionsPattern[]] := Module[
 	(* padding 0 bits *)
 	width = Floor[Log10[Max[vertexlist]] + 1];
 	vertexdot = MapThread[StringJoin["  ",
-		StringPadLeft[ToString[#1], width, "0"],
+		StringPadLeft[ToString[#1 - 1], width, "0"],
 		" [label=\"",
-		StringPadLeft[ToString[#1], width, "0"],
+		StringPadLeft[ToString[#1 - 1], width, "0"],
 		"\", width=0, height=0; pos=\"",
 		ToString[First @ #2],
 		",",
@@ -178,9 +178,9 @@ ExportGraphviz[graph_Graph, o:OptionsPattern[]] := Module[
 
 	edgelist = EdgeList[graph];
 	edgedot = StringJoin["  ",
-		StringPadLeft[ToString[First @ #1], width, "0"],
+		StringPadLeft[ToString[First @ #1 - 1], width, "0"],
 		"--",
-		StringPadLeft[ToString[Last @ #1], width, "0"],
+		StringPadLeft[ToString[Last @ #1 - 1], width, "0"],
 		" [color=\"black\", penwidth=1];\n"
 	]& /@ edgelist;
 	StringJoin["graph G {\n", vertexdot, "\n", edgedot, "}"]
