@@ -128,7 +128,7 @@ SetFlip[node_DRNode, vertices_List] := Block[
     (* reset others *)
     Table[
         PropertyValue[{graph, v}, "Flip"] = False,
-        {v, Complement[VertexCount[graph], vertices]}
+        {v, Complement[VertexList[graph], vertices]}
     ];
     node["Graph"] = graph;
     node
