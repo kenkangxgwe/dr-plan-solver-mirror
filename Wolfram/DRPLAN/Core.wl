@@ -33,9 +33,11 @@ ClearAll[Evaluate[Context[] <> "*"]]
 DRNode::usage = "DRNode[$n][\"property\"] returns the specified property of given DRNode[$n]."
 NewDRNode::usage = "NewDRNode[dotfile_String] returns the root node of a DR-Plan tree, according to the specified dotfile path."
 GenerateDRPlan::usage = "GenerateDRPlan[node_DRNode] constructs the DR-Plan for given root node."
+SetFlip::usage = "SetFlip[node_DRNode, vertices_List] set the given vertices to be True in flip vector and reset others to False."
+ResetFlip::usage = "SetFlip[node_DRNode, vertices_List] set all vertices' flips to False."
 FlipAt::usage = "FlipAt[node_DRNode, vertices_List] flips given vertices in the list for given root node."
-ModifyEdges::usage = "ModifyEdges[node_DRNode, modifier_] modifies the lengths of all the edges that satisfy criteria in the DR-plan by a function."
-ModifyBoundaries::usage = "ModifyBoundaries[node_DRNode, modifier] modifies the lengths of all the boundaries in the DR-plan by a function."
+ModifyEdges::usage = "ModifyEdges[node_DRNode, modifier_, crit_:(True&)] modifies the lengths of all the edges that satisfy criteria in the DR-plan by a function."
+ModifyBoundaries::usage = "ModifyBoundaries[node_DRNode, modifier_] modifies the lengths of all the boundaries in the DR-plan by a function."
 
 
 Begin["`Private`"]
@@ -112,7 +114,7 @@ AddSubNode[node_DRNode, vertOrEdges:{(_Integer?NonNegative|_UndirectedEdge)..}] 
 (*Flip*)
 
 
-FlipAt[node_DRNode, vertices_List] := Module[
+SetFlip[node_DRNode, vertices_List] := Block[
     {
         graph
     },
@@ -121,6 +123,30 @@ FlipAt[node_DRNode, vertices_List] := Module[
     (* flip vertices *)
     Table[
         PropertyValue[{graph, v}, "Flip"] = True,
+        {v, vertices}
+    ];
+    (* reset others *)
+    Table[
+        PropertyValue[{graph, v}, "Flip"] = False,
+        {v, Complement[VertexCount[graph], vertices]}
+    ];
+    node["Graph"] = graph;
+    node
+]
+
+ResetFlip[node_DRNode] := (
+    SetFlip[node, {}]
+)
+
+FlipAt[node_DRNode, vertices_List] := Block[
+    {
+        graph
+    },
+
+    graph = node["Graph"];
+    (* flip vertices *)
+    Table[
+        PropertyValue[{graph, v}, "Flip"] = !PropertyValue[{graph, v}, "Flip"],
         {v, vertices}
     ];
     node["Graph"] = graph;
@@ -141,8 +167,9 @@ GenerateDRPlan[node_DRNode] := Module[
         calcInterval[node];
     ];
 
-    If[node["IsCayleyNode"] = EdgeCount[node["Graph"]] == 1,
+    If[EdgeCount[node["Graph"]] == 1,
         (* is a cayley node *)
+        node["IsCayleyNode"] = True;
         cayleyEdge = First[EdgeList[node["Graph"]]];
         node["AllCayley"] = node["FreeCayley"] = {node["TargetCayley"]} = {EdgeIndex[node["Root"]["Graph"], cayleyEdge]};
         node["Interval"] = (Interval[{Min[#] + $Epsilon, Max[#] - $Epsilon}]&) @ PropertyValue[{node["Root"]["Graph"], cayleyEdge}, "Interval"];
@@ -150,6 +177,7 @@ GenerateDRPlan[node_DRNode] := Module[
         node["PlanRules"] = {},
 
         (* not a cayley node *)
+        node["IsCayleyNode"] = False;
         {freeCayley, subNodes} = GenerateDRNode[node];
         node["SubNodes"] = node["SubNodes"] ~Join~ subNodes;
         GenerateDRPlan /@ node["SubNodes"];
