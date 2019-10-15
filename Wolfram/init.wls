@@ -11,7 +11,8 @@ ImportContexts = {
 	"DRPLAN`Solver`",
 	"DRPLAN`Visualizer`",
 	"DRPLAN`OffsetSolver`",
-	"DRPLAN`DFSSolver`"
+	"DRPLAN`DFSSolver`",
+	"DRPLAN`Utility`"
 }
 
 WriteString[$Output, "Initializing DRPLAN... "]
