@@ -177,7 +177,7 @@ PersistDRNode[node_DRNode] := (
 
 (* See options in SolveNode *)
 Options[SolveDRPlan] = {
-    "Reevaluate" -> False,
+    "Parallelize" -> False,
     "AllCFlip" -> False
 }
 SolveDRPlan[node_DRNode, o:OptionsPattern[]] := (
@@ -276,7 +276,8 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
 
         nodeSolutions = mergeNodeSolution @@ MapThread[SolveNode[#1, #2,
             "Reevaluate" -> subReevaluate,
-            "AllCFlip" -> allCFlip
+            "AllCFlip" -> allCFlip,
+            "Parallelize" -> parallelize
         ]&, {node["SubNodes"], subDFlips}];
 
         (* Prepare Immutable data for parallelism*)
