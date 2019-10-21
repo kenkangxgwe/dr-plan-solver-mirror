@@ -181,7 +181,8 @@ PersistDRNode[node_DRNode] := (
 (* See options in SolveNode *)
 Options[SolveDRPlan] = {
     "Parallelize" -> False,
-    "AllCFlip" -> False
+    "AllCFlip" -> False,
+    "Reevaluate" -> False
 }
 SolveDRPlan[node_DRNode, o:OptionsPattern[]] := (
     ToPlanSolution /@ SolveNode[node, All, o]
