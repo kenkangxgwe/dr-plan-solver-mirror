@@ -286,7 +286,7 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
         $SowSampleList = sowSampleList;
 
         (* Solve a flip *)
-        {solutions, $sampleLists} = If[parallelize, 
+        {solutions, $sampleLists} = If[parallelize,
             ParallelTable[
                 Reap[SolveDFlip[nodeI, nodeSolution]],
                 {nodeSolution, nodeSolutions},
@@ -298,7 +298,7 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
                 {nodeSolution, nodeSolutions}
             ]
         ] // Replace[{
-            {} -> {{}, {}},
+            {} | $Aborted -> {{}, {}},
             solList_ :> Transpose[solList]
         }];
         $sampleLists = Flatten[$sampleLists, 1];
@@ -895,26 +895,31 @@ getDenseSamplesImpl[{start_Integer, end_Integer}] := (
 (* Find zeros in a interpolating function *)
 findZeros[interp_InterpolatingFunction, samplelist:{{_?NumericQ, _?NumericQ}..}] := Module[
     {
-        domain, bsp, knots, controlpoints, polyform, t, zeros, zerodomain
+        domain, knots, controlpoints, polyform, t, zeros, zerodomain
     },
 
     {domain} = interp["Domain"];
-    bsp = First@Cases[interp, _BSplineFunction, Infinity];
-    {knots} = bsp["Knots"];
-    controlpoints = bsp["ControlPoints"];
-    (*zerodomain= Transpose[{Most[knots[[3;;-3]]],Rest[knots[[3;;-3]]]}][[Flatten[Position[Most[controlpoints]*Rest[controlpoints],_?NonPositive]]]];*)
-    zerodomain = Part[
-        Transpose[{Most[samplelist[[All,1]]], Rest[samplelist[[All,1]]]}],
-        Flatten[Position[Most[samplelist[[All,2]]] * Rest[samplelist[[All,2]]], _?NonPositive]]
-    ];
+    FirstCase[interp, _BSplineFunction, Missing["NotBSpline"], Infinity]
+    // Replace[{
+        _?MissingQ -> {},
+        bsp_ :> (
+            {knots} = bsp["Knots"];
+            controlpoints = bsp["ControlPoints"];
+            (*zerodomain= Transpose[{Most[knots[[3;;-3]]],Rest[knots[[3;;-3]]]}][[Flatten[Position[Most[controlpoints]*Rest[controlpoints],_?NonPositive]]]];*)
+            zerodomain = Part[
+                Transpose[{Most[samplelist[[All,1]]], Rest[samplelist[[All,1]]]}],
+                Flatten[Position[Most[samplelist[[All,2]]] * Rest[samplelist[[All,2]]], _?NonPositive]]
+            ];
 
-    polyform = PiecewiseExpand[Sum[
-        controlpoints[[i + 1]] * PiecewiseExpand[BSplineBasis[{3, knots}, i, t]],
-        {i, 0, Length[controlpoints] - 1}
-    ]];
-    polyform = PiecewiseExpand[Piecewise[{{polyform,(Or@@((#[[1]] <= t <= #[[2]])&/@zerodomain))}},1]];
-    zeros = Flatten[Solve[polyform == 0, Reals]];
-    (t/.#&) /@ zeros
+            polyform = PiecewiseExpand[Sum[
+                controlpoints[[i + 1]] * PiecewiseExpand[BSplineBasis[{Min[Length[knots] - 2, 3], knots}, i, t]],
+                {i, 0, Length[controlpoints] - 1}
+            ]];
+            polyform = PiecewiseExpand[Piecewise[{{polyform,(Or@@((#[[1]] <= t <= #[[2]])&/@zerodomain))}},1]];
+            zeros = Flatten[Solve[polyform == 0, Reals]];
+            (t/.#&) /@ zeros
+        )
+    }]
 ]
 
 
