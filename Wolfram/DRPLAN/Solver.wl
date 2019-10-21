@@ -162,7 +162,10 @@ DataType`DeclareType[DRNode, <|
 *)
 PersistDRNode[node_DRNode] := (
     DRNode[<|
-        "Root" -> <|"Graph" -> node["Root"]["Graph"]|>,
+        "Root" -> <|
+            "Graph" -> node["Root"]["Graph"],
+            "PlanShortestEdge" -> node["Root"]["PlanShortestEdge"]
+        |>,
         "Graph" -> node["Graph"],
         "FreeCayley" -> node["FreeCayley"],
         "TargetDrop" -> node["TargetDrop"],
@@ -274,6 +277,8 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
             _ :> (Message[SolveNode::invdf, dFlip]; Abort[])
         }];
 
+        SetPlanShortestEdge[node];
+
         nodeSolutions = mergeNodeSolution @@ MapThread[SolveNode[#1, #2,
             "Reevaluate" -> subReevaluate,
             "AllCFlip" -> allCFlip,
@@ -307,6 +312,27 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
         node["Solutions"] = Part[Flatten[solutions], curDFlip];
         PrintProgress[node];
         node["Solutions"]
+    ]
+]
+
+
+(*
+    Finds the shortest edge of the DR-Plan and sets it as a field. This is
+    used to decide the number of samples according to different length of the
+    edge.
+*)
+SetPlanShortestEdge[node_DRNode] := With[
+    {
+        root = node["Root"],
+        rootgraph = node["Root"]["Graph"]
+    },
+
+    If[!NumericQ[node["Root"]["PlanShortestEdge"]],
+        root["PlanShortestEdge"] = Table[
+            If[PropertyValue[{rootgraph, edge}, "EdgeType"] == "Add",
+                Nothing,
+                PropertyValue[{rootgraph, edge}, EdgeWeight]
+            ], {edge, EdgeList[rootgraph]}] // Min
     ]
 ]
 
@@ -492,44 +518,55 @@ dropDiff[node_DRNode, coordinates_Association, dropOffset:_?NumericQ:1] := (
 (*Parameters*)
 
 
-$SampleDivisor = 2^17 (* the minimal distance between samples should be 1/$SampleDivisor *)
-$SampleNum = 36 (* estimated number of samples *)
+$SampleDivisor = 2^17 (* the minimal distance between samples should be <EdgeLength>/$SampleDivisor *)
+$SampleNum = 36 (* estimated number of samples for the shortest edge if it is uniform sparse sampling. *)
 $BoundaryRatio = 0.05 (* the width of the boundary outline on both sides of the interval that require dense sampling *)
 $RefineSampling = True (* on for refinsampling, off for uniform sparse sampling *)
 $DenseMultipler = 3 (* the ratio of dense sampling to sparse sampling *)
-$UniformSampleDistance = Max[Round[$SampleDivisor / $SampleNum], 1] (* the distance between two uniform samples *)
-$DenseSampleDistance = Max[Round[$UniformSampleDistance / $DenseMultipler], 1] (* the distance between two dense samples *)
-$SparseSampleDistance = $UniformSampleDistance (* the distance between two sparse samples *)
+GetSparseSampleDistance[sampleNum_] := Max[Round[$SampleDivisor / sampleNum], 1] (* the distance between two sparse samples *)
+GetDenseSampleDistance[sampleNum_] := Max[Round[$SampleDivisor / sampleNum / $DenseMultipler], 1] (* the distance between two dense samples *)
+$DenseSampleDistance = GetDenseSampleDistance[$SampleNum]
 $LeftBoundaryEnd = Max[Round[$SampleDivisor * $BoundaryRatio], 1]
 $RightBoundaryStart = Max[$SampleDivisor - Round[$SampleDivisor * $BoundaryRatio], 1]
-$UniformSampleIndices = DeleteDuplicates[Range[0, $SampleDivisor, Max[Round[$SampleDivisor / $SampleNum], 1]] ~Join~ {$SampleDivisor}]
-$DenseSampleIndices =  DeleteDuplicates[Join[
-    Range[0, $LeftBoundaryEnd, $DenseSampleDistance], {$LeftBoundaryEnd},
-    Range[$RightBoundaryStart, $SampleDivisor, $DenseSampleDistance], {$SampleDivisor}
-]]
-$SparseSampleIndices = DeleteCases[
-    Range[$LeftBoundaryEnd, $RightBoundaryStart, $SparseSampleDistance],
-    $LeftBoundaryEnd | $RightBoundaryStart
-]
 $ResampleRatio = 0.15
 $ZeroRatio = 0.01
 
 
 (* return a list of sample indices from 0 to $SampleDivisor *)
-getSamples[interval_Interval] := Module[
+getSamples[interval_Interval, planShortestEdge_?NumericQ] := Module[
     {
         left, right,
+        sampleNum,
         sampleIndices
     },
 
     {left, right} = MinMax[interval];
 
-    sampleIndices = If[$RefineSampling,
-        Join[$DenseSampleIndices, $SparseSampleIndices],
-        $UniformSampleIndices
+    (* The wider the interval is, the more samples we take. *)
+    sampleNum = If[right - left > planShortestEdge,
+        Ceiling[(right - left) / planShortestEdge * $SampleNum],
+        $SampleNum
     ];
 
-    SparseArray[(sampleIndices + 1) -> left + (right - left) * sampleIndices / $SampleDivisor, $SampleDivisor + 1, Missing["NotSampled"]]
+    sampleIndices = If[$RefineSampling,
+        Join[
+            Range[0, $LeftBoundaryEnd, GetDenseSampleDistance[sampleNum]], (* Left End Point & Left Boundary*)
+            Range[$LeftBoundaryEnd, $RightBoundaryStart, GetSparseSampleDistance[sampleNum]], (* Center *)
+            Range[$RightBoundaryStart, $SampleDivisor, GetDenseSampleDistance[sampleNum]], (*Right Boundary*)
+            {$SampleDivisor} (* Right End Point*)
+        ],
+        Join[
+            Range[0, $SampleDivisor, GetSparseSampleDistance[sampleNum]],
+            {$SampleDivisor} (* Right End Point*)
+        ]
+    ] // DeleteDuplicates;
+
+    {
+        sampleNum,
+        SparseArray[(sampleIndices + 1) -> left + (right - left) * sampleIndices / $SampleDivisor,
+            $SampleDivisor + 1, Missing["NotSampled"]
+        ]
+    }
 ]
 
 
@@ -568,7 +605,7 @@ SolveDFlip::nosolplan = "no solution for the dr-plan.";
 (* This function solves the given dropped flip. *)
 SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := Module[
     {
-        domain, freeSamples,
+        domain, sampleNum,
         firstSamples, firstResults,
         nearRatio = 0.30, nearZerosIntervals,
         refinedFreeSamples, refinedResults,
@@ -578,26 +615,18 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
     domain = Part[nodeSolution, 2];
 
     (* generate sample points for free cayleys *)
-    freeSamples = If[Length[node["FreeCayley"]] != 0,
-        SparseArray[Values[getSamples /@ KeyTake[domain, First[node["FreeCayley"]]]]],
+    {sampleNum, firstSamples} = If[node["FreeCayley"] =!= {},
+        (* only handles flex-1 case*)
+        Values[
+            Curry[getSamples][node["Root"]["PlanShortestEdge"]]
+            /@ KeyTake[domain, First[node["FreeCayley"]]]
+        ] // First,
         Echo["Last Cayley"];
         (* $on = True; *)
-        {}
+        {0, <||>}
     ];
     
-    (*presamples // scanSamples // genResamples *)
-    (* firstSamples = Echo @ If[Length[node["FreeCayley"]] == 0,
-        {<||>},
-        (* only handles flex-1 case*)
-        (<|First[node["FreeCayley"]] -> #|>&) /@ Select[First[freeSamples], Not@*MissingQ]
-    ];
-    firstResults = scanSamples[node, nodeSolution] /@ firstSamples; *)
     (* $on = False; *)
-    firstSamples = If[node["FreeCayley"] === {},
-        {<||>},
-        (* only handles flex-1 case*)
-        First[freeSamples]
-    ];
     (* If[$on, Echo[firstSamples]]; *)
     (* Echo[node["FreeCayley"]]; *)
     firstResults = If[node["FreeCayley"] === {},
@@ -612,7 +641,7 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
         finalSamples = firstSamples;
         finalResults = firstResults,
         nearZerosIntervals = findNearZerosIntervals[firstResults, domain[First[node["FreeCayley"]]], nearRatio];
-        refinedFreeSamples = getDenseSamples[firstSamples, nearZerosIntervals];
+        refinedFreeSamples = getDenseSamples[firstSamples, nearZerosIntervals, sampleNum];
         (* If[nearZerosIntervals =!= {}, Echo[refinedFreeSamples]];
         Abort[]; *)
 
@@ -651,7 +680,7 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
 
 scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][freeSample_Association] := Module[
     {
-        solution, domain, tFlip,
+        solution, domain, tFlip, sampleNum,
         refinedDomain, targetSamples,
         sampleList, approxIntervals, targetRefinedSamples, refinedSampleList,
         threshold, zeroThreshold, zeroIntervals, approxZeros, interp, interpd, tmpZeros
@@ -672,7 +701,7 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
     (* If[Head[refinedDomain] =!= Interval, Echo[t`rd]]; *)
     If[(Max[#] - Min[#]&)[refinedDomain] <= ($MachineEpsilon * $SampleDivisor), Echo[freeSample,"Empty Refined Interval"]; Return[{}]];
 
-    targetSamples = getSamples[refinedDomain];
+    {sampleNum, targetSamples} = getSamples[refinedDomain, node["Root"]["PlanShortestEdge"]];
     sampleList = (Replace[targetSample:Except[_Missing] :> (
         realizeNode[node, solution, tFlip,
             Append[freeSample, node["TargetCayley"] -> targetSample]
@@ -694,7 +723,7 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
     
     threshold = $ResampleRatio * dropLength[node];
     approxIntervals = findApproxIntervals[sampleList, threshold];
-    targetRefinedSamples = getDenseSamples[targetSamples, approxIntervals];
+    targetRefinedSamples = getDenseSamples[targetSamples, approxIntervals, sampleNum];
     
     refinedSampleList = (Replace[targetSample:Except[_Missing] :> (
         realizeNode[node, solution, tFlip,
@@ -765,8 +794,10 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
     zeroThreshold = $ZeroRatio * dropLength[node];
     zeroIntervals = findApproxIntervals[sampleList, zeroThreshold];
     (* zeroIntervals = {}; *)
-    approxZeros = getApproxZeros[tmpZeros, sampleList, zeroIntervals];
-    approxZeros = DeleteDuplicates[Join[approxZeros, getBoundaryApproxZeros[sampleList, zeroIntervals]]];
+    approxZeros = DeleteDuplicates[Join[
+        getApproxZeros[tmpZeros, sampleList, zeroIntervals, GetDenseSampleDistance[sampleNum] / $SampleDivisor],
+        getBoundaryApproxZeros[sampleList, zeroIntervals]
+    ]];
     (* If[Length[approxZeros] > 0,
         Echo[Length[approxZeros], "Num of approximated zeros"];
     ]; *)
@@ -864,7 +895,7 @@ findNearZerosIntervals[zeroTuples_SparseArray, domain_Interval, threshold_?Numer
 
 
 getDenseSamples::misint = "Either first or last element is missing for the first argument"
-getDenseSamples[targetSamples_SparseArray, intervals:{{_Integer, _Integer}...}] := Module[
+getDenseSamples[targetSamples_SparseArray, intervals:{{_Integer, _Integer}...}, sampleNum_Integer] := Module[
     {
         sampleIndices, left, right
     },
@@ -873,7 +904,11 @@ getDenseSamples[targetSamples_SparseArray, intervals:{{_Integer, _Integer}...}] 
     right = Last[targetSamples] // Replace[_Missing :> (Message[getDenseSamples::misint]; Abort[])];
 
     sampleIndices = Complement[
-        Join[getDenseSamplesImpl /@ intervals],
+        Join[Apply[{start, end} \[Function] Range[
+            Max[start - GetSparseSampleDistance[sampleNum], $LeftBoundaryEnd],
+            Min[end + GetSparseSampleDistance[sampleNum], $RightBoundaryStart],
+            GetDenseSampleDistance[sampleNum]
+        ]] /@ intervals],
         targetSamples // ArrayRules // Most
         // Cases[({pos_} -> val_) :> pos - 1] (* the index is off-by-one*)
     ];
@@ -882,14 +917,6 @@ getDenseSamples[targetSamples_SparseArray, intervals:{{_Integer, _Integer}...}] 
         $SampleDivisor + 1, Missing["NotSampled"]
     ]
 ]
-
-getDenseSamplesImpl[{start_Integer, end_Integer}] := (
-    Range[
-        Max[(start - 1) - $SparseSampleDistance, $LeftBoundaryEnd],
-        Min[(end - 1) + $SparseSampleDistance, $RightBoundaryStart],
-        $DenseSampleDistance
-    ]
-)
 
 
 (* Find zeros in a interpolating function *)
@@ -923,35 +950,34 @@ findZeros[interp_InterpolatingFunction, samplelist:{{_?NumericQ, _?NumericQ}..}]
 ]
 
 
-getApproxZeros[trueZeros_List, sampleList_SparseArray, zeroMinima_List] := Module[
-    {umZeros, umMinima}, 
+getApproxZeros[trueZeros_List, sampleList_SparseArray, zeroMinima_List, toleranceRatio_?NumericQ] := Module[
+    {umZeros, umMinima},
 
-    {umZeros, umMinima} = getApproxZerosImpl[sampleList][{{trueZeros, zeroMinima}, {{},{}}}];
+    {umZeros, umMinima} = getApproxZerosImpl[sampleList, toleranceRatio][{{trueZeros, zeroMinima}, {{},{}}}];
     (* If[Length[umMinima] > 0,
         Echo[(Part[sampleList, -1, 1] - Part[sampleList, 1, 1]) / $SampleDivisor * $DenseSampleDistance, "tolerance"];
         Echo[{umZeros, Normal[Part[sampleList, umMinima, 1]]}]
     ]; *)
     umMinima
-
 ]
 
 
-getApproxZerosImpl[sampleList_SparseArray][{{{}, {}}, unmatches:{{___?NumericQ}, {___Integer}}}] := unmatches
-getApproxZerosImpl[sampleList_SparseArray][{{{}, intervals:{__}}, unmatches_List}] := (* continue as if there is a zero at infinity point *)
-    getApproxZerosImpl[sampleList][{{{Infinity}, intervals}, unmatches}]
-getApproxZerosImpl[sampleList_SparseArray][{{trueZeros:{__}, {}}, unmatches_List}] := (* continue as if there is an interval at infinity point *)
-    getApproxZerosImpl[sampleList][{{trueZeros, {Infinity}}, unmatches}]
-getApproxZerosImpl[sampleList_SparseArray][{{trueZeros:{__}, intervals:{__}}, {umZeros_List, umMinima_List}}] := Module[
+getApproxZerosImpl[sampleList_SparseArray, toleranceRatio_?NumericQ][{{{}, {}}, unmatches:{{___?NumericQ}, {___Integer}}}] := unmatches
+getApproxZerosImpl[sampleList_, toleranceRatio_][{{{}, intervals:{__}}, unmatches_List}] := (* continue as if there is a zero at infinity point *)
+    getApproxZerosImpl[sampleList, toleranceRatio][{{{Infinity}, intervals}, unmatches}]
+getApproxZerosImpl[sampleList_, toleranceRatio_][{{trueZeros:{__}, {}}, unmatches_List}] := (* continue as if there is an interval at infinity point *)
+    getApproxZerosImpl[sampleList, toleranceRatio][{{trueZeros, {Infinity}}, unmatches}]
+getApproxZerosImpl[sampleList_, toleranceRatio_][{{trueZeros:{__}, intervals:{__}}, {umZeros_List, umMinima_List}}] := Module[
     {
         tolerance, firstZero, firstInterval, firstMinima
     },
 
-    tolerance = (- Subtract @@ MinMax[Part[Select[sampleList, Not@*MissingQ], All, 1]]) / $SampleDivisor * $DenseSampleDistance;
+    tolerance = - Subtract @@ MinMax[Part[Select[sampleList, Not@*MissingQ], All, 1]] * toleranceRatio;
     (* tolerance = (Part[sampleList, -1, 1] - Part[sampleList, 1, 1]) / $SampleDivisor * $DenseSampleDistance; *)
 
     firstZero = First[trueZeros];
     firstInterval = Replace[intervals, {
-        {i:{_Integer, _Integer}, ___} :> Interval[Normal[Part[sampleList, First[intervals], 1]]],
+        {interval:{_Integer, _Integer}, ___} :> Interval[Normal[Part[sampleList, interval, 1]]],
         {Infinity} :> Interval[{Infinity, Infinity}]
     }];
     Which[
@@ -981,7 +1007,7 @@ getApproxZerosImpl[sampleList_SparseArray][{{trueZeros:{__}, intervals:{__}}, {u
         True,
         {{Rest[trueZeros], Rest[intervals]}, {umZeros, umMinima}}
     ]
-] // getApproxZerosImpl[sampleList]
+] // getApproxZerosImpl[sampleList, toleranceRatio]
 
 
 getBoundaryApproxZeros::nep = "Cannot find the neighbor point of the boundary point."
