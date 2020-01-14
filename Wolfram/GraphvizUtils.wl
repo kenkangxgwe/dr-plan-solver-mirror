@@ -151,38 +151,52 @@ ImportGraphviz[dotfile_String, o:OptionsPattern[]] := Module[
 
 
 Options[ExportGraphviz] := {
-	"ScaleRatio" -> 1.0
+	"ScaleRatio" -> 1.0,
+	"IndexOffset" -> -1
 }
 
 ExportGraphviz[graph_Graph, o:OptionsPattern[]] := Module[
 	{
-		vertexlist, edgelist, vertexcoords, vertexdot, edgedot, width, scaleRatio
+		vertexlist, edgelist, vertexcoords, vertexdot, edgedot, width,
+		scaleRatio, indexOffset
 	},
 	
-	{scaleRatio} = OptionValue[ExportGraphviz, {o}, {"ScaleRatio"}];
+	{scaleRatio, indexOffset} = OptionValue[ExportGraphviz, {o}, {"ScaleRatio", "IndexOffset"}];
 
 	vertexlist = VertexList[graph];
 	vertexcoords = (VertexCoordinates /. Options[graph]);
 	(* padding 0 bits *)
 	width = Floor[Log10[Max[vertexlist]] + 1];
-	vertexdot = MapThread[StringJoin["  ",
-		StringPadLeft[ToString[#1 - 1], width, "0"],
+	vertexdot = Apply[StringJoin["  ",
+		StringPadLeft[ToString[#1 + indexOffset], width, "0"],
 		" [label=\"",
-		StringPadLeft[ToString[#1 - 1], width, "0"],
+		StringPadLeft[ToString[#1 + indexOffset], width, "0"],
 		"\", width=0, height=0; pos=\"",
 		ToString[First @ #2],
 		",",
 		ToString[Last @ #2],
 		"!\"];\n"
-	]&, {vertexlist, ScalingTransform[{scaleRatio, scaleRatio}] @ vertexcoords}];
+	]&, SortBy[Transpose[{vertexlist, ScalingTransform[{scaleRatio, scaleRatio}] @ vertexcoords}], First], {1}];
 
 	edgelist = EdgeList[graph];
-	edgedot = StringJoin["  ",
-		StringPadLeft[ToString[First @ #1 - 1], width, "0"],
+	edgedot = Table[StringJoin["  ",
+		StringPadLeft[ToString[First @ edge + indexOffset], width, "0"],
 		"--",
-		StringPadLeft[ToString[Last @ #1 - 1], width, "0"],
-		" [color=\"black\", penwidth=1];\n"
-	]& /@ edgelist;
+		StringPadLeft[ToString[Last @ edge + indexOffset], width, "0"],
+		" [color=\"",
+		{
+			PropertyValue[{graph, edge}, "EdgeType"],
+			PropertyValue[{graph, edge}, "BoundaryQ"]
+		}
+		// Replace[{
+			{"Add", False} -> "green",
+			{"Drop", False} -> "red",
+			{"Partial", True} -> "gray", 
+			{"Drop", True} -> "pink",
+			_ -> "black"
+		}],
+		"\", penwidth=1];\n"
+	], {edge, Map[Sort, edgelist, {0, 1}]}];
 	StringJoin["graph G {\n", vertexdot, "\n", edgedot, "}"]
 ]
 
