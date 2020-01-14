@@ -463,7 +463,7 @@ mergeNodeSolution[nodeSolutions__NodeSolution] := With[
 calcCoords::nosol = "The graph is not realizable."
 calcCoords::negdel = "The determinant `1` is negative at vertex `2` with cayleylength `3`."
 calcCoords::ntwotr = "The graph is not a two tree because there are more than two base vertices `2` connected to `1`."
-calcCoords::nttedge = "The edge `1` is not included in the two-tree."
+calcCoords::nttedge = "The edge `1` is has \"EdgeType\" `2` which is not included in the two-tree."
 calcCoords[node_DRNode, vertices_List, CayleyLength_Association, CayleyFlip_Association] := Module[
     {
         v1, v2
@@ -523,7 +523,7 @@ calcCoordsImpl[node_DRNode, CayleyLength_Association, CayleyFlip_Association][
         // Replace[{
             "Add" :> CayleyLength[EdgeIndex[rootgraph, e]],
             "Partial" :> PropertyValue[{rootgraph, e}, EdgeWeight],
-            err_ :> (Message[calcCoords::nttedge, err]; Abort[])
+            err_ :> (Message[calcCoords::nttedge, e, err]; Abort[])
         }],
         {e, {v1 <-> v2, v0 <-> v1, v0 <-> v2}}
     ];
@@ -532,7 +532,7 @@ calcCoordsImpl[node_DRNode, CayleyLength_Association, CayleyFlip_Association][
     {mx, my} = (c1 + c2) / 2;
     dd = d1 - d2;
     md = (d1 + d2) / 2;
-    delta = (Chop[(d0 - dd) * (md - d0 / 2)] * (d0 + dd) * (md + d0 / 2))
+    delta = Max[(Chop[(d0 - dd) * (md - d0 / 2)] * (d0 + dd) * (md + d0 / 2)), 0]
     // Replace[err:Except[_?NumericQ] :> (
         Print["delta: ", err, {d1, d2}, CayleyLength];
         Abort[]
@@ -864,6 +864,7 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
         },
 
         If[Length[interpSampleList] > 0,
+            Check[
                 interp = Interpolation[interpSampleList, InterpolationOrder -> 3, Method -> "Spline"];
                 interpd = interp';
                 tmpZeros = (findZeros[interp, interpSampleList])
@@ -872,6 +873,10 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
                     Echo[sampleList];
                     Abort[]
                 )],
+                Echo[interpSampleList, "interpSampleList"];
+                Echo[interp, "interp"];
+                Echo[tmpZeros, "tmpZeros"]
+            ],
             tmpZeros = {}
         ]
     ];
