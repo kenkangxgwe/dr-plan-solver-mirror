@@ -280,43 +280,65 @@ AnalyzeNode[node_DRNode, nodeSolution_NodeSolution] := Module[
 ]
 
 
+Options[AnalyzeSolution] = {
+    Properties -> All
+}
+
+AnalyzeSolution::invp = "Property `1` should be All or a proper list."
 AnalyzeSolution[node_DRNode, cayleyLength_Association] :=
     AnalyzeSolution[node, PlanSolution[cayleyLength, <||>]]
-AnalyzeSolution[node_DRNode, planSolution_PlanSolution] := Module[
+AnalyzeSolution[node_DRNode, planSolution_PlanSolution, o:OptionsPattern[]] := Module[
     {
-        originGraph, resultGraph
+        properties, withGraph = False, withError = False,
+        originGraph, resultGraph, errorMap
     },
+    
+    {properties} = OptionValue[AnalyzeSolution, {o}, {Properties}];
+
+    properties
+    // Replace[{
+        All :> (
+            withGraph = True;
+            withError = True;
+        ),
+        _List?(MemberQ["Graph"]) :> (
+            withGraph = True
+        ),
+        _List?(MemberQ["ErrorTable"]) :> (
+            withError = True
+        ),
+        _ :> (
+            Message[AnalyzeSolution::invp, properties];
+            withGraph = True;
+            withError = True;
+        )
+    }];
 
     originGraph = node["Root"]["Graph"];
     resultGraph = DRPLAN`Solver`Private`Realize[node["Root"], planSolution];
+    errorMap = PlanErrorMap[node, resultGraph];
+
     Row[{
-        Grid[{
+        If[withGraph, Grid[{
             {Graph[resultGraph, Options[originGraph, EdgeStyle], ImageSize -> 400], SpanFromLeft},
             {"D-Flips: ", Pane[Part[planSolution, 2], 300]},
-            {"C-Flips: ", Pane[Part[planSolution, 3], 300]}
-        }, Alignment -> {{Right, Center}, Baseline}],
-        Grid[
-            ({#1 \[UndirectedEdge] #2,
-                PropertyValue[{originGraph, #1 \[UndirectedEdge] #2}, EdgeStyle],
-                Chop[EuclideanDistance[
-                    PropertyValue[{resultGraph, #1}, VertexCoordinates], 
-                    PropertyValue[{resultGraph, #2}, VertexCoordinates]
-                ] - EuclideanDistance[
-                    PropertyValue[{originGraph, #1}, VertexCoordinates], 
-                    PropertyValue[{originGraph, #2}, VertexCoordinates]
-                ]],
-                Row[{(Chop[EuclideanDistance[
-                    PropertyValue[{resultGraph, #1}, VertexCoordinates], 
-                    PropertyValue[{resultGraph, #2}, VertexCoordinates]
-                ] / EuclideanDistance[
-                    PropertyValue[{originGraph, #1}, VertexCoordinates], 
-                    PropertyValue[{originGraph, #2}, VertexCoordinates]
-                ]] - 1) * 100, "%"}]
-            }&) @@@ Select[EdgeList[originGraph], PropertyValue[{originGraph, #}, "EdgeType"] =!= "Partial"&],
+            {"C-Flips: ", Pane[Part[planSolution, 3], 300]},
+            {"Max Error: ", Row[{PlanMaxError[node, errorMap] * 100, "%"}]}
+        }, Alignment -> {{Right, Center}, Baseline}], Nothing],
+        If[withError, Grid[
+            errorMap
+            // KeyValueMap[{edge, error} \[Function] {
+                edge,
+                PropertyValue[{originGraph, edge}, EdgeStyle],
+                First[error],
+                Row[{Last[error] * 100, "%"}]
+            }],
             Alignment -> {{"\[UndirectedEdge]", Center, ".", "."}, Baseline}
-        ]
+        ], Nothing]
     }]
 ]
+
+
 
 
 End[]

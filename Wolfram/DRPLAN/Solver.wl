@@ -33,6 +33,9 @@ InterpolatingFunctionGroup::usage = "A group of interpolating functions for smoo
 ToPlanSolution::usage = "ToPlanSolution[nodeSolution_NodeSolution] turns a node solution for the root node to a plan solution."
 NodeSolution::usage = "An object that contains the information for a node solution."
 PlanSolution::usage = "An object that contains the information for a plan solution."
+PlanErrorMap::usage = "PlanErrorMap[node_DRNode, planSolution_PlanSolution] returns an association that maps edge to {absoluteError, relativeError}."
+PlanMaxError::usage = "PlanMaxError[node_DRNode, planSolution_PlanSolution] returns the max error of the dropped edges."
+SimilarPlanQ::usage = "SimilarPlanQ[planSolution1_PlanSolution, planSolution2_PlanSolution] returns True if two plan solutions are similar to each other."
 
 
 Begin["`Private`"]
@@ -107,6 +110,48 @@ Realize[node_DRNode, PlanSolution[cayleyLength_Association, _, cFlip_Association
 ]
 
 
+PlanErrorMap[node_DRNode, planSolution_PlanSolution] := PlanErrorMap[node, Realize[node["Root"], planSolution]]
+PlanErrorMap[node_DRNode, resultGraph_Graph] := With[
+    {
+        originGraph = node["Root"]["Graph"]
+    },
+
+    Select[EdgeList[originGraph], PropertyValue[{originGraph, #}, "EdgeType"] =!= "Partial"&]
+    // Map[edge \[Function] (edge -> (
+        {EuclideanDistance[
+            PropertyValue[{resultGraph, First[edge]}, VertexCoordinates],
+            PropertyValue[{resultGraph, Last[edge]}, VertexCoordinates]
+        ], PropertyValue[{originGraph, edge}, EdgeWeight]}
+        // Apply[{#1 - #2, #1 / #2 - 1}&]
+        // Map[Chop]
+    ))]
+    // Apply[Association] (* Association is HoldAllComplete *)
+
+]
+
+Options[PlanMaxError] = {
+    "IncludeBoundary" -> True
+}
+PlanMaxError[node_DRNode, planSolution_PlanSolution, o:OptionsPattern[]] := PlanMaxError[node, PlanErrorMap[node, planSolution], o]
+PlanMaxError[node_DRNode, errorMap_Association, o:OptionsPattern[]] := With[
+    {
+        originGraph = node["Root"]["Graph"]
+    },
+
+    errorMap
+    // Lookup[Select[EdgeList[originGraph], (
+        PropertyValue[{originGraph, #}, "EdgeType"] === "Drop" &&
+        (PropertyValue[{originGraph, #}, "BoundaryQ"] \[Implies] OptionValue["IncludeBoundary"])
+    )&]]
+    // Transpose // Last
+    // MaximalBy[Abs] // First
+]
+
+
+Options[SimilarPlanQ] = {
+    "Threshold" -> 1
+}
+
 SimilarPlanQ[
     PlanSolution[
         cayleyLength1_Association,
@@ -120,8 +165,10 @@ SimilarPlanQ[
     o: OptionsPattern[]
 ] := Module[
     {
-        cayleys, maxCayley
+        threshold, cayleys(* , maxCayley *)
     },
+
+    {threshold} = OptionValue[SimilarPlanQ, {o}, {"Threshold"}];
 
     If[cFlip1 =!= cFlip2,
         Return[False]
@@ -132,13 +179,59 @@ SimilarPlanQ[
         Return[False]
     ];
 
-    {maxDiff, maxCayley} = Table[
+    (* {maxDiff, maxCayley} = *) Table[
+        Abs[cayleyLength1[cayley] - cayleyLength2[cayley]] / Max[cayleyLength1[cayley], cayleyLength2[cayley]],
+        {cayley, cayleys}
+    ] // Max
+    (* {maxDiff, maxCayley} = Table[
         {Abs[cayleyLength1[cayley] - cayleyLength2[cayley]], cayley},
         {cayley, cayleys}
     ] // MaximalBy[First] // First;
 
-    maxDiff / Max[cayleyLength1[maxCayley], cayleyLength2[maxCayley]]
+    (maxDiff / Max[cayleyLength1[maxCayley], cayleyLength2[maxCayley]]) < threshold *)
 
+]
+
+(* Only works for flex-1 *)
+PlanDiversity[
+    {PlanSolution[
+        cayleyLength1_Association,
+        dFlip1_List,
+        cFlip1_Association
+    ], PlanSolution[
+        cayleyLength2_Association,
+        dFlip2_List,
+        cFlip2_Association
+    ]},
+    root_DRNode
+] := Module[
+    {
+        dDiversity, cDiversity, cayleyLevel
+    },
+
+    dDiversity = (dFlip1 - dFlip2)
+    // Position[Except[0]?NumericQ]
+    // MaximalBy[Length]
+    // Replace[{} -> {{}}]
+    // First
+    // Length;
+
+    cayleyLevel = (Max @@@ Part[
+        EdgeList[root["Graph"]],
+        Table[cayley, {cayley, root["AllCayley"]}]
+    ])
+    // SortBy[Minus]
+    // RotateRight;
+
+    cDiversity = {cFlip1, cFlip2}
+    // Map[Keys]
+    // Apply[Complement[Union[#1, #2], Intersection[#1, #2]]&]
+    // Min
+    // FirstPosition[cayleyLevel, #]&
+    // Replace[_?MissingQ -> {0}]
+    // First;
+
+    Max[dDiversity, cDiversity]
 ]
 
 
@@ -771,14 +864,14 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
         },
 
         If[Length[interpSampleList] > 0,
-            interp = Interpolation[interpSampleList, InterpolationOrder -> 3, Method -> "Spline"];
-            interpd = interp';
-            tmpZeros = (findZeros[interp, interpSampleList])
-            // Replace[_findZeros :> (
-                (* wront type *)
-                Echo[sampleList];
-                Abort[]
-            )],
+                interp = Interpolation[interpSampleList, InterpolationOrder -> 3, Method -> "Spline"];
+                interpd = interp';
+                tmpZeros = (findZeros[interp, interpSampleList])
+                // Replace[_findZeros :> (
+                    (* wront type *)
+                    Echo[sampleList];
+                    Abort[]
+                )],
             tmpZeros = {}
         ]
     ];
