@@ -127,13 +127,15 @@ graph G {
   01--03 [color="gray", penwidth=1];
   03--05 [color="gray", penwidth=1];
   05--08 [color="gray", penwidth=1];
-  14--16 [color="gray", penwidth=1];
-  26--28 [color="gray", penwidth=1];
   08--16 [color="gray", penwidth=1];
+  14--16 [color="gray", penwidth=1];
   16--28 [color="gray", penwidth=1];
+  26--28 [color="gray", penwidth=1];
   28--43 [color="gray", penwidth=1];
+  41--43 [color="gray", penwidth=1];
   53--55 [color="gray", penwidth=1];
   54--55 [color="gray", penwidth=1];
+
 
   // cayley parameters
   05--07 [color="green", penwidth=1];
@@ -168,10 +170,6 @@ graph G {
   43--52 [color="green", penwidth=1];
   43--53 [color="green", penwidth=1];
   43--54 [color="green", penwidth=1];
-
-  // dummy boundary edges
-  37--38 [color="gray", penwidth=1];
-  41--43 [color="gray", penwidth=1];
 
   // dropped edges
   00--11 [color="red", penwidth=1];

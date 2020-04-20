@@ -165,6 +165,7 @@ GenerateDRPlan[node_DRNode] := Module[
 
     If[node["Root"] === node, (*RootQ*)
         calcInterval[node];
+        node["TwoTreeVertexCount"] = 0;
     ];
 
     If[EdgeCount[node["Graph"]] == 1,
@@ -178,6 +179,8 @@ GenerateDRPlan[node_DRNode] := Module[
 
         (* not a cayley node *)
         node["IsCayleyNode"] = False;
+        node["TwoTreeVertices"] = {};
+        node["CayleyVertices"] = {};
         {freeCayley, subNodes} = GenerateDRNode[node];
         node["SubNodes"] = node["SubNodes"] ~Join~ subNodes;
         GenerateDRPlan /@ node["SubNodes"];
@@ -215,7 +218,14 @@ GenerateDRNodeImpl[{node_DRNode, edgeIndex_Integer?NonNegative, dropCounter_Inte
     },
 
     If[edgeIndex == 0 || dropCounter == 2,
-       Return[{freeCayley, subNodes}];
+        node["TwoTreeVertices"] = Complement[node["TwoTreeVertices"], node["CayleyVertices"]]
+            (* dropped because of the first two vertices are not counted for two tree flips. *)
+            // If[edgeIndex == 0,
+                Drop[#, 2]&,
+                Identity
+            ];
+        node["Root"]["TwoTreeVertexCount"] += Length[node["TwoTreeVertices"]];
+        Return[{freeCayley, subNodes}]
     ];
 
     graph = node["Graph"];
@@ -233,8 +243,14 @@ GenerateDRNodeImpl[{node_DRNode, edgeIndex_Integer?NonNegative, dropCounter_Inte
             }];
             GenerateDRNodeImpl[{node, edgeIndex - 1, dropCounter + 1}, {freeCayley, newSubNodes}]
         ),
-        "Add" :> GenerateDRNodeImpl[{node, edgeIndex - 1, dropCounter}, {Prepend[freeCayley, rootEdgeIndex], subNodes}],
-        "Partial" :> GenerateDRNodeImpl[{node, edgeIndex - 1, dropCounter}, {freeCayley, subNodes}]
+        "Add" :> (
+            node["CayleyVertices"] = Union[node["CayleyVertices"], {Max@@curEdge}];
+            GenerateDRNodeImpl[{node, edgeIndex - 1, dropCounter}, {Prepend[freeCayley, rootEdgeIndex], subNodes}]
+        ),
+        "Partial" :> (
+            node["TwoTreeVertices"] = Union[node["TwoTreeVertices"], {Max@@curEdge}];
+            GenerateDRNodeImpl[{node, edgeIndex - 1, dropCounter}, {freeCayley, subNodes}]
+        )
     }]
 ]
 

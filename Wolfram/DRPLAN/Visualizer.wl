@@ -105,6 +105,8 @@ PrintDRPlan[node_DRNode]:= DynamicModule[
                             {"Target Cayley", Part[EdgeList[selectedNode["Root"]["Graph"]], selectedNode["TargetCayley"]]},
                             {"Free Cayleys", Row[Part[EdgeList[selectedNode["Root"]["Graph"]], selectedNode["FreeCayley"]], ","]},
                             {"All Cayleys", Pane[Row[Part[EdgeList[selectedNode["Root"]["Graph"]], selectedNode["AllCayley"]], ","], 300]},
+                            {"Cayley Vertices", Row[selectedNode["CayleyVertices"], ","]},
+                            {"TwoTree Vertices", Row[selectedNode["TwoTreeVertices"], ","]},
                             If[selectedNode["IsCayleyNode"],
                                 {"Interval", MinMax[selectedNode["Interval"]]},
                                 Nothing
@@ -324,7 +326,7 @@ AnalyzeSolution[node_DRNode, planSolution_PlanSolution, o:OptionsPattern[]] := M
             {"D-Flips: ", Pane[Part[planSolution, 2], 300]},
             {"C-Flips: ", Pane[Part[planSolution, 3], 300]},
             {"Max Error: ", Row[{PlanMaxError[node, errorMap] * 100, "%"}]}
-        }, Alignment -> {{Right, Center}, Baseline}], Nothing],
+        }, Alignment -> {{Right, Left}, Baseline}], Nothing],
         If[withError, Grid[
             errorMap
             // KeyValueMap[{edge, error} \[Function] {

@@ -41,6 +41,7 @@ SimilarPlanQ::usage = "SimilarPlanQ[planSolution1_PlanSolution, planSolution2_Pl
 Begin["`Private`"]
 ClearAll[Evaluate[Context[] <> "*"]]
 Needs["DRPLAN`Thread`"]
+Needs["DRPLAN`Utility`"]
 
 
 UnEcho = (#1&)
@@ -277,9 +278,22 @@ Options[SolveDRPlan] = {
     "AllCFlip" -> False,
     "Reevaluate" -> False
 }
-SolveDRPlan[node_DRNode, o:OptionsPattern[]] := (
-    ToPlanSolution /@ SolveNode[node, All, o]
-)
+SolveDRPlan[node_DRNode, o:OptionsPattern[]] := Block[
+    {
+        curSolutions
+    },
+
+    node["FlipSolutions"] = <||>;
+    Do[
+        curSolutions = ToPlanSolution /@ SolveNode[node, All, o];
+        Print[StringTemplate["`1` solutions found for DR-Plan at flip: `2`"][Length[curSolutions], ToString[GetFlipVector[node["Graph"]]]]];
+        node["FlipSolutions"] = Append[node["FlipSolutions"], GetFlipVector[node["Graph"]] -> curSolutions],
+        If[OptionValue["Reevaluate"] == "NextFlip",
+            Power[2, node["TwoTreeVerticesCount"]],
+            1
+        ]
+    ]
+ ]
 
 ToPlanSolution[nodeSolution_NodeSolution] := (
 
@@ -292,6 +306,7 @@ ToPlanSolution[nodeSolution_NodeSolution] := (
         - False: use cached;
         - True: re-evaluate current node;
         - All: re-evaluate current and all sub-nodes;
+        - "NextFlip": try the next two tree filps, if all tried trigger its sub nodes.
     - "AllCFlip":
         - False: only solve for dropped flips;
         - True: solve both dropped and cayley flips;
@@ -329,7 +344,7 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
     {reevaluate, allCFlip, sowSampleList, parallelize} =
         OptionValue[SolveNode, {o}, {"Reevaluate", "AllCFlip", "SowSampleList", "Parallelize"}];
 
-    (* Print["Solving " <> ToString[node]]; *)
+    Print["Solving " <> ToString[node]];
     If[node["IsCayleyNode"],
         rootgraph = node["Root"]["Graph"];
         cayleyVertex = Max @@ (Part[
@@ -359,7 +374,20 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
             Return[node["Solutions"]]
         ];
 
-        subReevaluate = If[reevaluate === All, All, False]; (* Unless All, do not re-evaluate the sub-nodes *)
+        If[reevaluate === "NextFlip",
+            SetTwoTreeFlipIndex[node]
+        ];
+
+        subReevaluate = reevaluate // Replace[{
+            All -> All,
+            "NextFlip" -> (
+                If[node["TwoTreeFlipIndex"] == 0,
+                    "NextFlip",
+                    False
+                ]
+            ),
+            _ -> False
+        }]; (* Unless All, do not re-evaluate the sub-nodes *)
 
         {curDFlip, subDFlips} = Replace[dFlip, {
             (* solve for all D-flips *)
@@ -431,6 +459,27 @@ SetPlanShortestEdge[node_DRNode] := With[
 ]
 
 
+(*
+    Set the two-tree flip to next one. If all combinations of two-tree flips
+    in current node are tried, reset to zero and go deep to sub nodes.
+*)
+SetTwoTreeFlipIndex[node_DRNode] := (
+
+    If[!NumericQ[node["TwoTreeFlipIndex"]],
+        node["TwoTreeFlipIndex"] = 0;
+        Return[]
+    ];
+
+    node["TwoTreeFlipIndex"] += 1;
+    If[node["TwoTreeFlipIndex"] >= Power[2, Length[node["TwoTreeVertices"]]],
+        node["TwoTreeFlipIndex"] = 0;
+        If[Length[node["TwoTreeVertices"]] > 0,
+            FlipAt[node["Root"], {Last[node["TwoTreeVertices"]]}]
+        ],
+        FlipAt[node["Root"], {Part[node["TwoTreeVertices"], IntegerExponent[2 * node["TwoTreeFlipIndex"], 2]]}]
+    ];
+)
+
 mergeNodeSolution::diftf = "Different T-Flips are specified for the same cayley edge."
 mergeNodeSolution[nodeSolutions:PatternSequence[{___NodeSolution}..]] := 
     Outer[mergeNodeSolution, nodeSolutions] // Flatten
@@ -452,7 +501,7 @@ mergeNodeSolution[nodeSolutions__NodeSolution] := With[
 ]
 
 
-(* ::section:: *)
+(* ::Section:: *)
 (*Solve Flip*)
 
 
