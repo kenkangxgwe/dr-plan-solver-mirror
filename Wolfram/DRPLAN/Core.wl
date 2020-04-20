@@ -266,15 +266,15 @@ ModifyEdges[node_DRNode, modifier_, crit_:(True&)] := Module[
     },
 
     Table[
-        PropertyValue[{rootgraph, boundary}, EdgeWeight] = (
-            PropertyValue[{rootgraph, boundary}, EdgeWeight]
+        PropertyValue[{rootgraph, edge}, EdgeWeight] = (
+            PropertyValue[{rootgraph, edge}, EdgeWeight]
             // modifier
             // Replace[value_?(Negative) :> (
-                Message[ModifyEdges::negval, boundary];
+                Message[ModifyEdges::negval, edge];
                 value
             )]
         ),
-        {boundary, Select[EdgeList[node["Graph"]], crit]}
+        {edge, Select[EdgeList[node["Graph"]], crit]}
     ];
 
     node["Root"]["Graph"] = rootgraph;
