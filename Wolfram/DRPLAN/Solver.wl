@@ -280,19 +280,23 @@ Options[SolveDRPlan] = {
 }
 SolveDRPlan[node_DRNode, o:OptionsPattern[]] := Block[
     {
-        curSolutions
+        curSolutions, flipsToSolve
     },
 
+    flipsToSolve = If[OptionValue["Reevaluate"] == "NextFlip",
+        Power[2, node["TwoTreeVertexCount"]],
+        1
+    ];
     node["FlipSolutions"] = <||>;
-    Do[
+    Table[
+        Print[StringTemplate["Solving Two-tree flip: `1` / `2`"][flip, flipsToSolve]];
         curSolutions = ToPlanSolution /@ SolveNode[node, All, o];
-        Print[StringTemplate["`1` solutions found for DR-Plan at flip: `2`"][Length[curSolutions], ToString[GetFlipVector[node["Graph"]]]]];
+        If[Length[curSolutions] == 0,
+            Print[StringTemplate["`1` solutions found for DR-Plan at flip: `2`"][Length[curSolutions], ToString[GetFlipVector[node["Graph"]]]]];
+        ];
         node["FlipSolutions"] = Append[node["FlipSolutions"], GetFlipVector[node["Graph"]] -> curSolutions],
-        If[OptionValue["Reevaluate"] == "NextFlip",
-            Power[2, node["TwoTreeVerticesCount"]],
-            1
-        ]
-    ]
+        {flip, flipsToSolve}
+    ];
  ]
 
 ToPlanSolution[nodeSolution_NodeSolution] := (
