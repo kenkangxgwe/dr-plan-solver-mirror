@@ -36,6 +36,7 @@ GenerateDRPlan::usage = "GenerateDRPlan[node_DRNode] constructs the DR-Plan for 
 SetFlip::usage = "SetFlip[node_DRNode, vertices_List] set the given vertices to be True in flip vector and reset others to False."
 ResetFlip::usage = "SetFlip[node_DRNode, vertices_List] set all vertices' flips to False."
 FlipAt::usage = "FlipAt[node_DRNode, vertices_List] flips given vertices in the list for given root node."
+GetFlip::usage = "GetFlip[node_DRNode] returns the flip vector for the given root node."
 ModifyEdges::usage = "ModifyEdges[node_DRNode, modifier_, crit_:(True&)] modifies the lengths of all the edges that satisfy criteria in the DR-plan by a function."
 ModifyBoundaries::usage = "ModifyBoundaries[node_DRNode, modifier_] modifies the lengths of all the boundaries in the DR-plan by a function."
 
@@ -116,10 +117,9 @@ AddSubNode[node_DRNode, vertOrEdges:{(_Integer?NonNegative|_UndirectedEdge)..}] 
 
 SetFlip[node_DRNode, vertices_List] := Block[
     {
-        graph
+        graph = node["Graph"]
     },
 
-    graph = node["Graph"];
     (* flip vertices *)
     Table[
         PropertyValue[{graph, v}, "Flip"] = True,
@@ -140,10 +140,9 @@ ResetFlip[node_DRNode] := (
 
 FlipAt[node_DRNode, vertices_List] := Block[
     {
-        graph
+        graph = node["Graph"]
     },
 
-    graph = node["Graph"];
     (* flip vertices *)
     Table[
         PropertyValue[{graph, v}, "Flip"] = !PropertyValue[{graph, v}, "Flip"],
@@ -151,6 +150,20 @@ FlipAt[node_DRNode, vertices_List] := Block[
     ];
     node["Graph"] = graph;
     node
+]
+
+GetFlip[node_DRNode] := Block[
+    {
+        graph = node["Graph"]
+    },
+
+    Table[
+        If[PropertyValue[{graph, v}, "Flip"],
+            v,
+            Nothing
+        ],
+        {v, VertexList[graph]}
+    ] // Sort
 ]
 
 

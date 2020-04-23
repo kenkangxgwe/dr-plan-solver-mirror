@@ -291,13 +291,13 @@ SolveDRPlan[node_DRNode, o:OptionsPattern[]] := Block[
     Table[
         Print[StringTemplate["Solving Two-tree flip: `1` / `2`"][flip, flipsToSolve]];
         curSolutions = ToPlanSolution /@ SolveNode[node, All, o];
-        If[Length[curSolutions] == 0,
-            Print[StringTemplate["`1` solutions found for DR-Plan at flip: `2`"][Length[curSolutions], ToString[GetFlipVector[node["Graph"]]]]];
+        If[Length[curSolutions] != 0,
+            Print[StringTemplate["`1` solutions found for DR-Plan at flip: `2`"][Length[curSolutions], ToString[GetFlip[node]]]];
         ];
-        node["FlipSolutions"] = Append[node["FlipSolutions"], GetFlipVector[node["Graph"]] -> curSolutions],
+        node["FlipSolutions"] = Append[node["FlipSolutions"], GetFlip[node] -> curSolutions],
         {flip, flipsToSolve}
     ];
- ]
+]
 
 ToPlanSolution[nodeSolution_NodeSolution] := (
 
@@ -348,7 +348,7 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
     {reevaluate, allCFlip, sowSampleList, parallelize} =
         OptionValue[SolveNode, {o}, {"Reevaluate", "AllCFlip", "SowSampleList", "Parallelize"}];
 
-    Print["Solving " <> ToString[node]];
+    (* Print["Solving " <> ToString[node]]; *)
     If[node["IsCayleyNode"],
         rootgraph = node["Root"]["Graph"];
         cayleyVertex = Max @@ (Part[
@@ -478,8 +478,11 @@ SetTwoTreeFlipIndex[node_DRNode] := (
     If[node["TwoTreeFlipIndex"] >= Power[2, Length[node["TwoTreeVertices"]]],
         node["TwoTreeFlipIndex"] = 0;
         If[Length[node["TwoTreeVertices"]] > 0,
+            Print[StringTemplate["Flipping vertices: `1` at `2`"][{Last[node["TwoTreeVertices"]]}, node]];
             FlipAt[node["Root"], {Last[node["TwoTreeVertices"]]}]
         ],
+        Print[StringTemplate["Flipping vertices: `1` at `2`"][
+            {Part[node["TwoTreeVertices"], IntegerExponent[2 * node["TwoTreeFlipIndex"], 2]]}, node]];
         FlipAt[node["Root"], {Part[node["TwoTreeVertices"], IntegerExponent[2 * node["TwoTreeFlipIndex"], 2]]}]
     ];
 )
