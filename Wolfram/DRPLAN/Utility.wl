@@ -30,6 +30,8 @@ Displacement::usage = "Displacement[node_DRNode, node_DRNode] combines two reali
 RigidityMatrix::usage = "RigidityMatrix[graph_Graph] returns the rigidity matrix."
 InfinitesimallyRigidQ::usage = "InfinitismallyRigidQ[graph_Graph] gives True if the input DRNode is infinitesimally rigid ."
 ComputeFlipVector::usage = "ComputeFlipVector[graph_Graph] gives a flip vector of the input graph."
+PlanToOrignal::usage = "PlanToOriginal[graph_Graph, o:OptionsPatterns[]] gives the graph with all the Cayley parameters removed and dropped edges added back."
+PlanToTwotree::usage = "PlanToTwotree[graph_Graph, o:OptionsPatterns[]] gives the graph with all the Cayley parameters removed and without dropped edges."
 
 
 Begin["`Private`"]
@@ -142,6 +144,62 @@ ComputeFlipVector[graph_Graph] := (
 
 
 ccwQ[p_List, q_List, r__List] := Det[Append[#, 1] & /@ {p, q, r}]
+
+
+Options[PlanToOrignal] = {
+    "IncludeBoundaries" -> True,
+    "KeepColors" -> False
+}
+
+PlanToOrignal[graph_Graph, o:OptionsPattern[]] := Block[
+    {
+        newGraph = graph
+    },
+
+    If[!OptionValue["KeepColors"],
+        newGraph
+        // EdgeList
+        // Select[(PropertyValue[{newGraph, #}, "EdgeType"] == "Drop")&]
+        // Map[(PropertyValue[{newGraph, #}, EdgeStyle] =
+            If[PropertyValue[{newGraph, #}, "BoundaryQ"],
+                Gray,
+                Black
+            ]
+        )&]
+    ];
+
+    newGraph
+    // EdgeList
+    // Select[PropertyValue[{newGraph, #}, "EdgeType"] == "Add" ||
+        (!OptionValue["IncludeBoundaries"] &&
+        PropertyValue[{newGraph, #}, "BoundaryQ"])&
+    ]
+    // EdgeDelete[newGraph, #]&
+]
+
+
+Options[PlanToTwotree] = {
+    "IncludeBoundaries" -> True,
+    "KeepColors" -> True
+}
+
+PlanToTwotree[graph_Graph, o:OptionsPattern[]] := Block[
+    {
+        newGraph = graph
+    },
+
+    If[!OptionValue["KeepColors"],
+        newGraph
+        // EdgeList
+        // Select[PropertyValue[{newGraph, #}, "EdgeType"] == "Add"&]
+        // Map[PropertyValue[{newGraph, #}, EdgeStyle -> Black]&]
+    ];
+
+    newGraph
+    // EdgeList
+    // Select[PropertyValue[{newGraph, #}, "EdgeType"] == "Drop"&]
+    // EdgeDelete[newGraph, #]&
+]
 
 
 End[]

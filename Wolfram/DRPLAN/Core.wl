@@ -36,7 +36,8 @@ GenerateDRPlan::usage = "GenerateDRPlan[node_DRNode] constructs the DR-Plan for 
 SetFlip::usage = "SetFlip[node_DRNode, vertices_List] set the given vertices to be True in flip vector and reset others to False."
 ResetFlip::usage = "SetFlip[node_DRNode, vertices_List] set all vertices' flips to False."
 FlipAt::usage = "FlipAt[node_DRNode, vertices_List] flips given vertices in the list for given root node."
-GetFlip::usage = "GetFlip[node_DRNode] returns the flip vector for the given root node."
+GetFlip::usage = "GetFlip[node_DRNode] returns the flip vector for the given root node.
+GetFlip[node_DRNode, cflip_Association] returns the flip vector for the given root node and also considering the cflip."
 ModifyEdges::usage = "ModifyEdges[node_DRNode, modifier_, crit_:(True&)] modifies the lengths of all the edges that satisfy criteria in the DR-plan by a function."
 ModifyBoundaries::usage = "ModifyBoundaries[node_DRNode, modifier_] modifies the lengths of all the boundaries in the DR-plan by a function."
 
@@ -151,6 +152,21 @@ FlipAt[node_DRNode, vertices_List] := Block[
     node["Graph"] = graph;
     node
 ]
+
+GetFlip[node_DRNode, cflip_Association] := (
+    cflip
+    // Normal
+    // GroupBy[Last -> First]
+    // Complement[
+        Union[
+            GetFlip[node],
+            #[True]
+            // Replace[_?MissingQ -> {}]
+        ],
+        #[False]
+        // Replace[_?MissingQ -> {}]
+    ]&
+)
 
 GetFlip[node_DRNode] := Block[
     {

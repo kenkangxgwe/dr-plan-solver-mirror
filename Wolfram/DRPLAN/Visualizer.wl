@@ -27,7 +27,8 @@ ClearAll[Evaluate[Context[] <> "*"]]
 
 
 PrintDRPlan::usage = "PrintDRPlan[node_DRNode] prints the freeCayley parameters at each node."
-AnalyzeSolution::usage = "AnalyzeSolution[node_DRNode, cayleyLength_Association] gives the result graph and errors of each non-partial edge."
+AnalyzeSolution::usage = "AnalyzeSolution[node_DRNode, cayleyLength_Association] gives the result graph and errors of each non-partial edge.
+AnalyzeSolution[node_DRNode, planSolution_PlanSolution, o:OptionsPattern[]] gives the result graph and errors of each non-partial edge."
 
 
 Begin["`Private`"]
@@ -320,12 +321,26 @@ AnalyzeSolution[node_DRNode, planSolution_PlanSolution, o:OptionsPattern[]] := M
     resultGraph = DRPLAN`Solver`Private`Realize[node["Root"], planSolution];
     errorMap = PlanErrorMap[node, resultGraph];
 
-    Row[{
+    Grid[{{
         If[withGraph, Grid[{
             {Graph[resultGraph, Options[originGraph, EdgeStyle], ImageSize -> 400], SpanFromLeft},
+            {Style["Flip Vector: ", Bold], GetFlip[node, Part[planSolution, 3]]}
             {"D-Flips: ", Pane[Part[planSolution, 2], 300]},
             {"C-Flips: ", Pane[Part[planSolution, 3], 300]},
-            {"Max Error: ", Row[{PlanMaxError[node, errorMap] * 100, "%"}]}
+            {Style["Abs Error: ", Bold], Row[With[
+                {
+                    errors = Abs[PlanEdgeError[node, errorMap]]
+                },
+
+                {
+                    NumberForm[Mean[errors] * 100, {3, 2}], "%\[PlusMinus]",
+                    NumberForm[StandardDeviation[errors] * 100, {3, 2}], "%",
+                    ", ", Style["Min:", Bold], " ",
+                    NumberForm[Min @@ errors * 100, {3, 2}], "%",
+                    ", ", Style["Max:", Bold], " ",
+                    NumberForm[Max @@ errors * 100, {3, 2}], "%"
+                }
+            ]]}
         }, Alignment -> {{Right, Left}, Baseline}], Nothing],
         If[withError, Grid[
             errorMap
@@ -337,7 +352,7 @@ AnalyzeSolution[node_DRNode, planSolution_PlanSolution, o:OptionsPattern[]] := M
             }],
             Alignment -> {{"\[UndirectedEdge]", Center, ".", "."}, Baseline}
         ], Nothing]
-    }]
+    }}]
 ]
 
 

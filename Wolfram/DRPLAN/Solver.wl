@@ -34,7 +34,7 @@ ToPlanSolution::usage = "ToPlanSolution[nodeSolution_NodeSolution] turns a node 
 NodeSolution::usage = "An object that contains the information for a node solution."
 PlanSolution::usage = "An object that contains the information for a plan solution."
 PlanErrorMap::usage = "PlanErrorMap[node_DRNode, planSolution_PlanSolution] returns an association that maps edge to {absoluteError, relativeError}."
-PlanMaxError::usage = "PlanMaxError[node_DRNode, planSolution_PlanSolution] returns the max error of the dropped edges."
+PlanEdgeError::usage = "PlanEdgeError[node_DRNode, planSolution_PlanSolution, o:OptionsPattern[]] returns the errors of the dropped edges."
 SimilarPlanQ::usage = "SimilarPlanQ[planSolution1_PlanSolution, planSolution2_PlanSolution] returns True if two plan solutions are similar to each other."
 
 
@@ -130,11 +130,11 @@ PlanErrorMap[node_DRNode, resultGraph_Graph] := With[
 
 ]
 
-Options[PlanMaxError] = {
+Options[PlanEdgeError] = {
     "IncludeBoundary" -> True
 }
-PlanMaxError[node_DRNode, planSolution_PlanSolution, o:OptionsPattern[]] := PlanMaxError[node, PlanErrorMap[node, planSolution], o]
-PlanMaxError[node_DRNode, errorMap_Association, o:OptionsPattern[]] := With[
+PlanEdgeError[node_DRNode, planSolution_PlanSolution, o:OptionsPattern[]] := PlanEdgeError[node, PlanErrorMap[node, planSolution], o]
+PlanEdgeError[node_DRNode, errorMap_Association, o:OptionsPattern[]] := With[
     {
         originGraph = node["Root"]["Graph"]
     },
@@ -145,7 +145,6 @@ PlanMaxError[node_DRNode, errorMap_Association, o:OptionsPattern[]] := With[
         (PropertyValue[{originGraph, #}, "BoundaryQ"] \[Implies] OptionValue["IncludeBoundary"])
     )&]]
     // Transpose // Last
-    // MaximalBy[Abs] // First
 ]
 
 
