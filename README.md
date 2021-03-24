@@ -95,12 +95,12 @@ Download the latest version of splinter library
 ### HexTrig
 
 1. __Input__  
-![HexTrigInput](examples/others/hexTrig.png)
+![HexTrigInput](examples/Others/hexTrig.png)
 2. __Run__  
 `DRPLAN -f "3,5,6" -s 15 examples/hexTrig.dot`
 3. __Solution__  
-![HexTrigSolution1](examples/others/hexTrig.sol-1.png)
-![HexTrigSolution2](examples/others/hexTrig.sol-2.png)
+![HexTrigSolution1](examples/Others/hexTrig.sol-1.png)
+![HexTrigSolution2](examples/Others/hexTrig.sol-2.png)
 
 ### Zig-Zag-7
 
