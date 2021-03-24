@@ -1,0 +1,46 @@
+graph G {
+  00 [label="00", width=0, height=0; pos="-290.575,503.291!"];
+  01 [label="01", width=0, height=0; pos="-371.251,214.342!"];
+  02 [label="02", width=0, height=0; pos="-80.6759,288.949!"];
+  03 [label="03", width=0, height=0; pos="0.,0.!"];
+  04 [label="04", width=0, height=0; pos="209.899,214.342!"];
+  05 [label="05", width=0, height=0; pos="500.474,288.949!"];
+  06 [label="06", width=0, height=0; pos="290.575,503.291!"];
+  07 [label="07", width=0, height=0; pos="371.251,792.239!"];
+  08 [label="08", width=0, height=0; pos="661.826,717.632!"];
+  09 [label="09", width=0, height=0; pos="581.15,1006.58!"];
+  10 [label="10", width=0, height=0; pos="80.6759,717.632!"];
+  12 [label="12", width=0, height=0; pos="0.,1006.58!"];
+
+  // partial edges
+  01--00 [color="black", penwidth=1];
+  01--02 [color="black", penwidth=1];
+  02--00 [color="black", penwidth=1];
+  02--04 [color="black", penwidth=1];
+  04--05 [color="black", penwidth=1];
+  04--06 [color="black", penwidth=1];
+  03--02 [color="black", penwidth=1];
+  03--04 [color="black", penwidth=1];
+  05--06 [color="black", penwidth=1];
+  06--07 [color="black", penwidth=1];
+  08--09 [color="black", penwidth=1];
+  07--08 [color="black", penwidth=1];
+  07--09 [color="black", penwidth=1];
+  10--07 [color="black", penwidth=1];
+  08--12 [color="black", penwidth=1];
+  10--12 [color="black", penwidth=1];
+
+  // boundary partial edges
+  01--03 [color="gray", penwidth=1];
+  03--05 [color="gray", penwidth=1];
+  05--08 [color="gray", penwidth=1];
+
+  // cayley parameters
+  05--07 [color="green", penwidth=1];
+  08--10 [color="green", penwidth=1];
+
+  // dropped edges
+  06--10 [color="red", penwidth=1];
+  00--12 [color="pink", penwidth=1];
+
+}

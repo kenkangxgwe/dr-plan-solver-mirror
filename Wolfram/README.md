@@ -78,7 +78,7 @@ PrintDRPlan[exampleDRPlan]
 (* To solve the DR-Plan *)
 SolveDRPlan[exampleDRPlan]
 ```
-![PrintDRPlan](./images/PrintDRPlan.svg)
+![PrintDRPlan](images/PrintDRPlan.svg)
 
 #### Partial Results
 
@@ -115,7 +115,7 @@ AnalyzeSolution[exampleDRPlan,
 
 AnalyzeSolution[exampleDRPlan, #]& /@ exampleDRPlan["Solutions"]
 ```
-![AnalyzeSolution](./images/AnalyzeSolution.svg)
+![AnalyzeSolution](images/AnalyzeSolution.svg)
 
 #### Private variables for visualization
 If you need to use the plot functions to plot the sample points, please enable
@@ -197,9 +197,9 @@ If we find an interval where its Δ value is near to zero, we apply the refined
 sampling to that area. Effectively we insert more sample points into the index
 bin.
 
-![RefinedSampling3D](./images/RefineSampling3D.svg)
+![RefinedSampling3D](images/RefineSampling3D.svg)
 
-![RefinedSamplingContour](./images/RefineSamplingContour.svg)
+![RefinedSamplingContour](images/RefineSamplingContour.svg)
 
 These two plots are generated from `$sampleLists` using `ListPointPlot3D` and `ListContourPLot`.
 
@@ -214,7 +214,7 @@ The zero points may belong to different flips of the dropped edge (which we call
 D-Flips or dropped flips). We try to categorize them into different flips using
 both the distance and derivatives information.
 
-![BeadThreading](./images/BeadThreading.svg)
+![BeadThreading](images/BeadThreading.svg)
 
 This plot is generated from `finalSamples` and `finalResults` in `SolveDFlip` using `Plot`.
 
@@ -239,7 +239,7 @@ With[
 
 ### Alternative Interpolation
 
-![AlternativeInterpolation](./images/AlternativeInterpolation.svg)
+![AlternativeInterpolation](images/AlternativeInterpolation.svg)
 
 To avoid artifacts in resampling, for example, non-uniform sample points may
 result in fluctuation of the interpolation, if they are too close. Thus, we
@@ -276,11 +276,11 @@ See `examples/hexlattice.zigzag-21.dot` in root folder.
 
 ### Input DR-Plan
 
-![hexlat-21](./images/hexlat-21.svg) 
+![hexlat-21](images/hexlat-21.svg) 
 
 ### Output DR-Plan
 
-![hexlat-21.solution](./images/hexlat-21.solution.svg) 
+![hexlat-21.solution](images/hexlat-21.solution.svg) 
 
 ## Compatibility
 

@@ -1,50 +1,65 @@
 # DR-plan Solver
 
-Takes a planar graph with edge distances that is minimally rigid in 2D and a flex DR-plan (a recursive decomposition into minimally 
-rigid, maximal proper subgraphs) as input, and a desired flip (orientation) of a 2D realization of the vertices as points 
-that achieves the edge distances. Outputs the realization.
+Takes a planar graph with edge distances that is minimally rigid in 2D and a
+flex DR-plan (a recursive decomposition into minimally rigid, maximal proper
+subgraphs) as input, and a desired flip (orientation) of a 2D realization of the
+vertices as points that achieves the edge distances. Outputs the realization.
+
+<!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-refresh-toc -->
+**Table of Contents**
+
+- [DR-plan Solver](#dr-plan-solver)
+    - [Requirements](#requirements)
+    - [Build](#build)
+    - [Usage](#usage)
+    - [Examples](#examples)
+        - [HexTrig](#hextrig)
+        - [Zig-Zag-7](#zig-zag-7)
+        - [HexLattice](#hexlattice)
+    - [LICENSE](#license)
+
+<!-- markdown-toc end -->
 
 ## Requirements
 * [**CMake**](https://cmake.org) >=3.5.*
 * [**Boost Graph Library**](https://www.boost.org/doc/libs/release/libs/graph/)  
-Use MinGW or [vcpkg](https://github.com/Microsoft/vcpkg) to integrate Boost with Windows.
+Use MinGW or [vcpkg](https://github.com/Microsoft/vcpkg) to integrate Boost with
+Windows.
 * [**Splinter**](https://github.com/bgrimstad/splinter) for multi-variant interpolation.  
 Header files are included in `./include/`.  
-Download the latest version of splinter library [here](https://github.com/bgrimstad/splinter/releases).
-* [**Boost Libraries**](https://www.boost.org/) for libraries like [Program Options](https://www.boost.org/doc/libs/release/libs/program_options/).
-* [**GNU Linear Programming Kit (GLPK)**](https://www.gnu.org/software/glpk/) to solve the simplex of the cayley parameters.
-* [**GraphViz**](https://www.graphviz.org/) (neato) to generate pictures from .dot files. (Optional)
+Download the latest version of splinter library
+[here](https://github.com/bgrimstad/splinter/releases).
+* [**Boost Libraries**](https://www.boost.org/) for libraries like [Program
+  Options](https://www.boost.org/doc/libs/release/libs/program_options/).
+* [**GNU Linear Programming Kit (GLPK)**](https://www.gnu.org/software/glpk/) to
+  solve the simplex of the cayley parameters.
+* [**GraphViz**](https://www.graphviz.org/) (neato) to generate pictures from
+  .dot files. (Optional)
 <!-- * [**Cotire**](https://github.com/sakra/cotire) to generate pre-compiled header to speed up builds. (Included) -->
 
 ## Build
 1. git clone this repository.  
-
 2. Build  
-
     * Windows
-
         * Visual Studio
             1. Download the `msvc` version of Splinter library.
             2. Create a new folder to store the solution files.
             3. Use `cmake-gui` to generate Visual Studio project.  
             Manually specify the path to Splinter and GLPK in CMake. See the CMake options below.
             4. Open the project in Visual Studio and build.  
-
         * JetBrains CLion
             1. Download the `win-gcc` version of Splinter library.
             2. Directly open the `cmakelist.txt` as a project.
             3. Open **Settings -> Build, Execution, Deployment -> CMake**.
             4. Add CMake Options, see the CMake options below.
-
     * Linux  
         1. Download the linux version of Splinter library.  
-        2. Use CMake to build.  
-        ```
-        cd build &&
-        cmake .. -DCMAKE_BUILD_TYPE={Debug/Release} -DSPLINTER_LIB="Path/to/libsplinter-static-*-*.a" -DGLPK_LIB="Path/to/libglpk.so"
-        ```  
+        2. Use CMake to build.
+            ```
+            cd build &&
+            cmake .. -DCMAKE_BUILD_TYPE={Debug/Release} -DSPLINTER_LIB="Path/to/libsplinter-static-*-*.a" -DGLPK_LIB="Path/to/libglpk.so"
+            ```
         3. Make
-        
 3. CMake Options  
     * `-DSPLINTER_LIB=`
         * for static library, set to `Path/to/libsplinter-static-*-*.a`.
@@ -80,30 +95,30 @@ Download the latest version of splinter library [here](https://github.com/bgrims
 ### HexTrig
 
 1. __Input__  
-![HexTrigInput](./examples/hexTrig.dot.png)
+![HexTrigInput](examples/others/hexTrig.png)
 2. __Run__  
 `DRPLAN -f "3,5,6" -s 15 examples/hexTrig.dot`
 3. __Solution__  
-![HexTrigSolution1](./examples/hexTrig.sol-1.dot.png)
-![HexTrigSolution2](./examples/hexTrig.sol-2.dot.png)
+![HexTrigSolution1](examples/others/hexTrig.sol-1.png)
+![HexTrigSolution2](examples/others/hexTrig.sol-2.png)
 
 ### Zig-Zag-7
 
 1. __Input__  
-![ZigZag7Input](./examples/zig-zag-7.dot.png)
+![ZigZag7Input](examples/Zig-Zag/zig-zag-7.png)
 2. __Run__
 `DRPLAN -f "3,5,6,9,12,13,15,16,18,19,21,24,26,28" -s 25 examples/zig-zag-7.dot`
 3. __Solution__  
-![ZigZag7Solution1](./examples/zig-zag-7.sol-1.dot.png)
+![ZigZag7Solution1](examples/Zig-Zag/zig-zag-7.sol-1.png)
 
 ### HexLattice
 
 1. __Input__  
-![HexLatticeInput](./examples/hexlattice-21.png)
+![HexLatticeInput](examples/Hexagonal-Lattice/hexlattice-21.png)
 2. __Run__    
 `DRPLAN -f "3,5,7,8,10,11,12,14,15,16,17,19,22,25,31,33,35,37,38" -s 50 examples/hexlattice-21.dot`
 3. __Solution__  
-![HexLatticeSolution1](./examples/hexlattice-21.sol.dot.png)
+![HexLatticeSolution1](examples/Hexagonal-Lattice/hexlattice-21.sol.png)
 
 
 ## LICENSE
