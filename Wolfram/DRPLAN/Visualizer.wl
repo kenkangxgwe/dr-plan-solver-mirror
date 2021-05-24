@@ -324,7 +324,7 @@ AnalyzeSolution[node_DRNode, planSolution_PlanSolution, o:OptionsPattern[]] := M
     Grid[{{
         If[withGraph, Grid[{
             {Graph[resultGraph, Options[originGraph, EdgeStyle], ImageSize -> 400], SpanFromLeft},
-            {Style["Flip Vector: ", Bold], GetFlip[node, Part[planSolution, 3]]}
+            {Style["Flip Vector: ", Bold], GetFlip[node, Part[planSolution, 3]]},
             {"D-Flips: ", Pane[Part[planSolution, 2], 300]},
             {"C-Flips: ", Pane[Part[planSolution, 3], 300]},
             {Style["Abs Error: ", Bold], Row[With[
@@ -336,9 +336,11 @@ AnalyzeSolution[node_DRNode, planSolution_PlanSolution, o:OptionsPattern[]] := M
                     NumberForm[Mean[errors] * 100, {3, 2}], "%\[PlusMinus]",
                     NumberForm[StandardDeviation[errors] * 100, {3, 2}], "%",
                     ", ", Style["Min:", Bold], " ",
-                    NumberForm[Min @@ errors * 100, {3, 2}], "%",
+                    NumberForm[Min @@ errors * 100, {3, 2},
+                        ScientificNotationThreshold -> {-Infinity, Infinity}], "%",
                     ", ", Style["Max:", Bold], " ",
-                    NumberForm[Max @@ errors * 100, {3, 2}], "%"
+                    NumberForm[Max @@ errors * 100, {3, 2},
+                        ScientificNotationThreshold -> {-Infinity, Infinity}], "%"
                 }
             ]]}
         }, Alignment -> {{Right, Left}, Baseline}], Nothing],

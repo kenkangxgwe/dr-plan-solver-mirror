@@ -282,7 +282,7 @@ SolveDRPlan[node_DRNode, o:OptionsPattern[]] := Block[
         curSolutions, flipsToSolve
     },
 
-    flipsToSolve = If[OptionValue["Reevaluate"] == "NextFlip",
+    flipsToSolve = If[OptionValue["Reevaluate"] === "NextFlip",
         Power[2, node["TwoTreeVertexCount"]],
         1
     ];
