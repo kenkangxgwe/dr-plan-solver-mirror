@@ -457,6 +457,7 @@ SetPlanShortestEdge[node_DRNode] := With[
             If[PropertyValue[{rootgraph, edge}, "EdgeType"] == "Add",
                 Nothing,
                 PropertyValue[{rootgraph, edge}, EdgeWeight]
+                // Replace[_?(EqualTo[0]) -> Nothing]
             ], {edge, EdgeList[rootgraph]}] // Min
     ]
 ]
