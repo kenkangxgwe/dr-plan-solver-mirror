@@ -34,7 +34,7 @@ DRNode::usage = "DRNode[$n][\"property\"] returns the specified property of give
 NewDRNode::usage = "NewDRNode[dotfile_String] returns the root node of a DR-Plan tree, according to the specified dotfile path."
 GenerateDRPlan::usage = "GenerateDRPlan[node_DRNode] constructs the DR-Plan for given root node."
 SetFlip::usage = "SetFlip[node_DRNode, vertices_List] set the given vertices to be True in flip vector and reset others to False."
-ResetFlip::usage = "SetFlip[node_DRNode, vertices_List] set all vertices' flips to False."
+ResetFlip::usage = "Reset[node_DRNode] set all vertices' flips to False."
 FlipAt::usage = "FlipAt[node_DRNode, vertices_List] flips given vertices in the list for given root node."
 GetFlip::usage = "GetFlip[node_DRNode] returns the flip vector for the given root node.
 GetFlip[node_DRNode, cflip_Association] returns the flip vector for the given root node and also considering the cflip."
@@ -101,12 +101,23 @@ NewDRNode[graph:(_Graph | _Subgraph)] := Module[
     Add a new subnode, containing only the edges.
     Thus the graph property should be accessed through root graph.
 *)
-AddSubNode[node_DRNode, vertOrEdges:{(_Integer?NonNegative|_UndirectedEdge)..}] := Module[
+AddSubNode[node_DRNode, verticesOrEdges:{(_Integer?NonNegative|_UndirectedEdge)..}] := Module[
     {
         newSubNode
     },
 
-    newSubNode = NewDRNode[Subgraph[node["Graph"], vertOrEdges]];
+    newSubNode = NewDRNode[Subgraph[node["Graph"], verticesOrEdges]];
+    newSubNode["Root"] = node["Root"];
+    newSubNode
+]
+
+
+AddSubNode[node_DRNode, vertices:{___Integer?NonNegative}, edges:{___UndirectedEdge}] := Module[
+    {
+        newSubNode
+    },
+
+    newSubNode = NewDRNode[Subgraph[Graph[edges], vertices]];
     newSubNode["Root"] = node["Root"];
     newSubNode
 ]
@@ -268,7 +279,7 @@ GenerateDRNodeImpl[{node_DRNode, edgeIndex_Integer?NonNegative, dropCounter_Inte
                     node["TargetDrop"] = rootEdgeIndex;
                     node["TargetLength"] = PropertyValue[{rootgraph, curEdge}, EdgeWeight]
                 ),
-                1 :> AppendTo[newSubNodes, AddSubNode[node, Range[0, Max[{First[curEdge], Last[curEdge]}]]]]
+                1 :> AppendTo[newSubNodes, AddSubNode[node, Range[0, Max[List@@curEdge]], Take[EdgeList[graph], edgeIndex]]]
             }];
             GenerateDRNodeImpl[{node, edgeIndex - 1, dropCounter + 1}, {freeCayley, newSubNodes}]
         ),
