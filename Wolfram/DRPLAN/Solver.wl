@@ -795,9 +795,10 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
     (* Echo[node["FreeCayley"]]; *)
     firstResults = If[node["FreeCayley"] === {},
         {Tuple[scanSamples[node, nodeSolution, dropOffset][<||>]]},
-        Replace[firstSamples, freeSample:Except[_Missing] :> (
+        (* firstSamples is a sparse array, should not use Replace[..., {1}] *)
+        firstSamples // Map[Replace[freeSample:Except[_Missing] :> (
             Tuple[scanSamples[node, nodeSolution, dropOffset][<|First[node["FreeCayley"]] -> freeSample|>]]
-        ), {1}]
+        )]]
     ];
     (* If[$on, Echo[firstResults]]; *)
     (* Echo[firstResults]; *)
