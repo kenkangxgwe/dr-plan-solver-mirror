@@ -29,6 +29,7 @@ ClearAll[Evaluate[Context[] <> "*"]]
 Displacement::usage = "Displacement[node_DRNode, node_DRNode] combines two realizations for the same linkage and draw displancement vectors."
 RigidityMatrix::usage = "RigidityMatrix[graph_Graph] returns the rigidity matrix."
 InfinitesimallyRigidQ::usage = "InfinitismallyRigidQ[graph_Graph] gives True if the input DRNode is infinitesimally rigid ."
+FlipVectorIndices::usage = "FlipVectorIndices[graph_Graph] gives a list of indices that should be used when computing the flip vector."
 ComputeFlipVector::usage = "ComputeFlipVector[graph_Graph] gives a flip vector of the input graph."
 PlanToOrignal::usage = "PlanToOriginal[graph_Graph, o:OptionsPatterns[]] gives the graph with all the Cayley parameters removed and dropped edges added back."
 PlanToTwotree::usage = "PlanToTwotree[graph_Graph, o:OptionsPatterns[]] gives the graph with all the Cayley parameters removed and without dropped edges."
@@ -128,22 +129,30 @@ InfinitesimallyRigidQ[graph_Graph] := With[
 ]
 
 
-ComputeFlipVector[graph_Graph] := (
+FlipVectorIndices[graph_Graph] := (
     graph
     // VertexList
-    // Curry[Drop][2]
-    // Select[(v0 \[Function] (
+    // Drop[#, 2]&
+    // Map[(v0 \[Function] (
         AdjacencyList[graph, v0]
         // Select[(# < v0 && PropertyValue[{graph, # <-> v0}, "EdgeType"] != "Drop")&]
-        // Prepend[v0]
-        // Map[PropertyValue[{graph, #}, VertexCoordinates]&]
-        // Apply[ccwQ]
-        // Negative
+        // Append[v0]
     ))]
 )
 
 
-ccwQ[p_List, q_List, r__List] := Det[Append[#, 1] & /@ {p, q, r}]
+ComputeFlipVector[graph_Graph] := (
+    graph
+    // FlipVectorIndices
+    // Select[
+        Map[PropertyValue[{graph, #}, VertexCoordinates]&]
+        /* Apply[ccwQ]
+    ]
+    // Part[#, All, -1]&
+)
+
+
+ccwQ[p_List, q_List, r__List] := Det[Append[#, 1] & /@ {p, q, r}] // Negative
 
 
 Options[PlanToOrignal] = {

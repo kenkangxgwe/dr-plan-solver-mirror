@@ -38,6 +38,7 @@ ResetFlip::usage = "Reset[node_DRNode] set all vertices' flips to False."
 FlipAt::usage = "FlipAt[node_DRNode, vertices_List] flips given vertices in the list for given root node."
 GetFlip::usage = "GetFlip[node_DRNode] returns the flip vector for the given root node.
 GetFlip[node_DRNode, cflip_Association] returns the flip vector for the given root node and also considering the cflip."
+PlanSolution::usage = "An object that contains the information for a plan solution."
 ModifyEdges::usage = "ModifyEdges[node_DRNode, modifier_, crit_:(True&)] modifies the lengths of all the edges that satisfy criteria in the DR-plan by a function."
 ModifyBoundaries::usage = "ModifyBoundaries[node_DRNode, modifier_] modifies the lengths of all the boundaries in the DR-plan by a function."
 

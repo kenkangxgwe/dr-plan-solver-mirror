@@ -32,7 +32,6 @@ SolveNode[node_DRNode, dFlip:(All | _List)] solves the node only for specified D
 InterpolatingFunctionGroup::usage = "A group of interpolating functions for smoothing purpose."
 ToPlanSolution::usage = "ToPlanSolution[nodeSolution_NodeSolution] turns a node solution for the root node to a plan solution."
 NodeSolution::usage = "An object that contains the information for a node solution."
-PlanSolution::usage = "An object that contains the information for a plan solution."
 PlanErrorMap::usage = "PlanErrorMap[node_DRNode, planSolution_PlanSolution] returns an association that maps edge to {absoluteError, relativeError}."
 PlanEdgeError::usage = "PlanEdgeError[node_DRNode, planSolution_PlanSolution, o:OptionsPattern[]] returns the errors of the dropped edges."
 SimilarPlanQ::usage = "SimilarPlanQ[planSolution1_PlanSolution, planSolution2_PlanSolution] returns True if two plan solutions are similar to each other."

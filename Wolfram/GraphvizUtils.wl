@@ -185,8 +185,8 @@ ExportGraphviz[graph_Graph, o:OptionsPattern[]] := Module[
 		StringPadLeft[ToString[Last @ edge + indexOffset], width, "0"],
 		" [color=\"",
 		{
-			PropertyValue[{graph, edge}, "EdgeType"],
-			PropertyValue[{graph, edge}, "BoundaryQ"]
+			AnnotationValue[{graph, edge}, "EdgeType"],
+			AnnotationValue[{graph, edge}, "BoundaryQ"]
 		}
 		// Replace[{
 			{"Add", False} -> "green",

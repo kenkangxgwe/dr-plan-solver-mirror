@@ -141,7 +141,7 @@ PrintDRPlan[node_DRNode]:= DynamicModule[
                             (*Dynamic[OpenerView[{"SamplePoints", Reap[selectedNode["SolveNode"[]]]}, Method \[Rule] "Active"]]*)
                         }],
                         Nothing
-                    ] *)
+                    ], *)
                     Nothing
                 }}, Alignment -> Center]
             }]
@@ -223,7 +223,7 @@ NodeManipulateRenderingFunction[node_DRNode, nodeSolution_NodeSolution, freeCayl
     },
 
     cayleyLength = (#[freeCayleys]&) /@ First[nodeSolution];
-    graph = DRPLAN`Solver`Private`Realize[node, PlanSolution[cayleyLength, <||>]];
+    graph = DRPLAN`Solver`Private`Realize[node, PlanSolution[cayleyLength, <||>, <||>]];
     If[FailureQ[graph], Return[$Failed]];
 
     cayleyEdges = Flatten @ {
@@ -237,7 +237,7 @@ NodeManipulateRenderingFunction[node_DRNode, nodeSolution_NodeSolution, freeCayl
 
     visualCayleyLength = KeyMap[Part[EdgeList[node["Root"]["Graph"]], #]&, cayleyLength];
 
-    Column[{modifyGraph[graph], visualCayleyLength, dropDiff[node, graph]}]
+    Column[{modifyGraph[graph], visualCayleyLength, DRPLAN`Solver`Private`dropDiff[node, graph]}]
 ]
 
 
@@ -260,26 +260,18 @@ AnalyzeNode[node_DRNode, nodeSolution_NodeSolution] := Module[
     ];
     AppendTo[mins, Min[refinedDomain]];
     AppendTo[maxs, Max[refinedDomain]]; *)
-    With[
-        {
-            nodeSolution = nodeSolution,
-            cayleys = cayleys,
-            node = node,
-            vars = vars,
-            controls = Sequence @@ MapThread[{{#1, #3, #2}, #3, #4}&, {vars, labels, mins, maxs}]
-        },
-
-        (* Abort[]; *)
-        (* Manipulate[NodeManipulateRenderingFunction[node, value], controls] *)
-        Manipulate[
-            NodeManipulateRenderingFunction[
-                node,
-                nodeSolution,
-                Association[Thread[cayleys -> vars]]
-            ],
-           controls
-        ]
-    ]
+    (* var list *)
+    MapThread[{{#1, #3, #2}, #3, #4}&, {vars, labels, mins, maxs}]
+    (* free cayleys *)
+    // Prepend[Thread[cayleys -> vars]]
+    // Apply[Manipulate[
+        NodeManipulateRenderingFunction[
+            node,
+            nodeSolution,
+            #1 // Association
+        ],
+        ##2
+    ]&]
 ]
 
 
