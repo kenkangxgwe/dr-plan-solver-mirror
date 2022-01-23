@@ -26,11 +26,15 @@ BeginPackage["DRPLAN`Thread`"]
 ClearAll[Evaluate[Context[] <> "*"]]
 
 
-threadZeros::usage = "threadZeros[zeroTuples_List] connects the zero points using a number of threads, so that each thread is a D-flip."
+ThreadZeros::usage = "ThreadZeros[zeroTuples_List] connects the zero points using a number of threads, so that each thread is a D-flip."
+InterpolationPiece::usage = "InterpolationPiece[point] is used to split the interpolating function piece-wisely."
 
 
 Begin["`Private`"]
 ClearAll[Evaluate[Context[] <> "*"]]
+
+
+InterpolationPiece[InterpolationPiece[p_]] := InterpolationPiece[p]
 
 
 (*
@@ -40,66 +44,6 @@ ClearAll[Evaluate[Context[] <> "*"]]
 *)
 
 
-NewThread[beads_] := <|"beads" -> beads, "terminated" -> {}, "active" -> {}, "position" -> 0|>
-
-CreateLine[state_Association, index_Integer] := ReplacePart[state, "active" -> Append[state["active"], CreateLine[index, state["position"]]]]
-CreateLine[index_Integer, pos_Integer] := <|"index" -> index, "beads" -> {}, "start" -> pos|>
-
-TerminateLine[state_Association, index_Integer] := Module[
-	{
-		activeLines, terminatingIdx, terminatedLines
-	},
-	
-	activeLines = state["active"];
-	terminatingIdx = FirstPosition[activeLines, _?(#index == index&), {}, {1}, Heads -> False];
-	terminatedLines = Join[state["terminated"], Part[activeLines, terminatingIdx]];
-	activeLines = Delete[activeLines, terminatingIdx];
-	ReplacePart[state, {"active" -> activeLines, "terminated" -> terminatedLines}]
-] 
-
-AllLines[state_Association] := With[
-	{
-		activeLines = state["active"], terminatedLines = state["terminated"],
-		numBeads = Length[state["beads"]]
-	},
-	
-	(Table[Missing[], #start] ~Join~ #beads ~Join~ Table[Missing[], numBeads - #start - Length[#beads]]&) /@ (activeLines ~Join~ terminatedLines)
-	
-]
-
-
-ThreadBeads[state_Association] := With[
-    {
-        position = state["position"] + 1
-    },
-	
-	ReplacePart[state, {
-        "position" -> position,
-        "active" -> Table[
-            ReplacePart[activeLine, "beads" -> Append[
-                activeLine["beads"],
-                Part[state["beads"], position, activeLine["index"], 1]
-            ]],
-            {activeLine, state["active"]}
-        ]
-    }]
-]
-
-
-(*
-    Dynamically updates the index of thread according to current offset
-*)
-ChangeLineIdx[state_Association, offsets_List] := (
-
-    ReplacePart[state, "active" -> Table[
-        ReplacePart[activeLine, "index" -> (
-            activeLine["index"] + Part[offsets, activeLine["index"]]
-        )],
-        {activeLine, state["active"]}
-    ]]
-)
-
-
 (*
     TODO: merge threadLine and threadStep,
     or maybe not?
@@ -107,90 +51,430 @@ ChangeLineIdx[state_Association, offsets_List] := (
 
 
 (* threadStep *)
-threadLine[state_Association, step_] := Module[
+threadLine[state_Association, step_] := With[
     {
-        numLines,
-        activeIds, terminatedIds,
-        newState = state
+        forkLeftIds = Tally[step] // Cases[{idx_, _?(GreaterThan[1])} :> idx]
     },
 
-    numLines = Length[step];
-    activeIds = Through[state["active"]["index"]];
-
-    (* terminates lines that out of boundary *)
-    terminatedIds = Select[activeIds, (# <  1 || # > numLines)&]; 
-    newState = Fold[TerminateLine, newState, terminatedIds];
-
-    (* add new lines *)
-    activeIds = Complement[activeIds, terminatedIds];
-    newState = Fold[CreateLine, newState, Complement[Range[numLines], activeIds]];
-    
-    ChangeLineIdx[ThreadBeads[newState], step]
-
+    state
+    // ReplacePart["position" -> (state["position"] + 1)]
+    // ReplacePart[Key["terminated"] -> Join[
+        state["terminated"],
+        Part[state["active"], Complement[Range[Length[state["active"]]], Flatten[step]]]
+    ]]
+    // ReplacePart[Key["active"] -> Table[
+        With[
+        {
+            nextBead = Part[state["beads"], state["position"] + 1, rightIdx, 1]
+        },
+            Replace[
+                Part[step, rightIdx],
+                {
+                    0 :> (
+                        {<|"beads" -> {nextBead}, "start" -> state["position"]|>}
+                    ),
+                    leftIdx_Integer?(MemberQ[forkLeftIds, #]&) :> (
+                        Part[state["active"], leftIdx]
+                        // Flatten
+                        // Map[ReplacePart[#, "beads" -> Append[MapAt[InterpolationPiece, #beads, -1], nextBead]]&]
+                    ),
+                    leftIdx_Integer :> (
+                        Part[state["active"], leftIdx]
+                        // Flatten
+                        // Map[ReplacePart[#, "beads" -> Append[#beads, nextBead]]&]
+                    ),
+                    leftIdx:{_Integer, _Integer} :> (
+                        Part[state["active"], leftIdx]
+                        // Flatten
+                        // Map[ReplacePart[#, "beads" -> Append[#beads, InterpolationPiece[nextBead]]]&]
+                    )
+                }
+            ]
+        ],
+    {rightIdx, Length[step]}]]
 ]
 
 
 (*
     Leverages the derivatives to decide the connection between last and current steps.
-    Returns the offset between last and current points.
+    Returns the last thread indices to use for the next threads.
  *)
-threadStep[firstPair_, secondPair_] := (
-    If[firstPair === {} || secondPair === {},
-       Return[{}]
-    ];
+threadStep::strcase = "Strange `1` case happens at index `2`: `3`."
+threadStep[firstPair_, secondPair_, index_Integer, domain_Interval] := With[
+    {
+        firstSigns = Part[firstPair, All, 2] // Sign,
+        secondSigns = Part[secondPair, All, 2] // Sign
+    },
+    {firstPair, secondPair}
+    // Map[Length]
+    // Replace[{
+        {len1_, 0} :> (
+            (* all ends *)
+            If[len1 > 2,
+                Message[threadStep::strcase, ToString[len1] <> "-0", index, ToString[len1] <> " is larger than 2"]
+            ];
+            {}
+        ),
+        {0, len2_} :> (
+            (* all starts *)
+            If[len2 > 2 && index > 0,
+                Message[threadStep::strcase, "0-" <> ToString[len2], index, ToString[len2] <> " is larger than 2"]
+            ];
+            Table[0, len2]
+        ),
+        {3, 3} :> (
+            If[{firstSigns, secondSigns} // MapThread[Equal] // Apply[And] // Not,
+                Message[threadStep::strcase, "3-3", index, "derivatives mismatch for " <> ToString[{firstSigns, secondSigns} // Thread]]
+            ];
+            (* Continue *)
+            Range[3]
+        ),
+        {3, 2} :> (
+            If[EuclideanDistance[Part[firstPair, 2], Part[secondPair, 1]] < EuclideanDistance[Part[firstPair, 2], Part[secondPair, -1]],
+                (* 2-1, 3-2 *)
+                If[Part[{firstSigns, secondSigns}, All, -1] // Apply[Equal] // Not,
+                    Message[threadStep::strcase, "3-2", index, "derivatives mismatch at last tuple " <> ToString[Part[{firstSigns, secondSigns}, All, -1]] <> ", if 2-1 & 3-2"]
+                ];
+                If[((Part[secondPair, 1, 1] - Part[firstPair, 1, 1]) / (Part[firstPair, 2, 1] - Part[firstPair, 1, 1])) < 0.6,
+                    (* 1-1 *)
+                    If[Take[firstSigns, 2] // Apply[Equal],
+                        Message[threadStep::strcase, "3-2", index, "derivatives of " <> ToString[firstPair] <> " are the same sign at first two points, if 1 & 2 join 1"]
+                    ];
+                    {{1, 2}, 3},
+                    (* 1 ends *)
+                    {2, 3}
+                ],
+                (* 1-1, 2-2 *)
+                If[Part[{firstSigns, secondSigns}, All, 1] // Apply[Equal] // Not,
+                    Message[threadStep::strcase, "3-2", index, "derivative signs mismatch at first tuple " <> ToString[Part[{firstPair, secondPair}, All, 1]] <> ", if 1-1, 2-2."]
+                ];
+                If[((Part[secondPair, -1, 1] - Part[firstPair, 2, 1]) / (Part[firstPair, -1, 1] - Part[firstPair, 2, 1])) > 0.4,
+                    (* 3-2 *)
+                    If[Take[firstSigns, -2] // Apply[Equal],
+                        Message[threadStep::strcase, "3-2", index, "derivatives are same at last two points " <> ToString[Take[firstPair, -2]] <> ", if 2 & 3 join 2."]
+                    ];
+                    {1, {2, 3}},
+                    (* 3 ends *)
+                    {1, 2}
+                ]
+            ]
+        ),
+        {2, 3} :> (
+            If[EuclideanDistance[Part[firstPair, 1], Part[secondPair, 2]] < EuclideanDistance[Part[firstPair, -1], Part[secondPair, 2]],
+                (* 1-2, 2-3 *)
+                If[Part[{firstSigns, secondSigns}, All, -1] // Apply[Equal] // Not,
+                    Message[threadStep::strcase, "2-3", index, "derivative signs mismatch at last tuple " <> ToString[Part[{firstPair, secondPair}, All, -1]] <> ", if 1-2, 2-3."]
+                ];
+                If[(Part[firstPair, 1, 1] - Part[secondPair, 1, 1]) / (Part[secondPair, 2, 1] - Part[secondPair, 1, 1]) < 0.6,
+                    (* 1-1 *)
+                    If[Take[secondSigns, 2] // Apply[Equal],
+                        Message[threadStep::strcase, "2-3", index, "derivative signs are same at first two points " <> ToString[Take[secondPair, 2]] <> ", if 1 forks 1 & 2."]
+                    ];
+                    {1, 1, 2},
+                    (* 1 starts *)
+                    {0, 1, 2}
+                ],
+                (* 1-1, 2-2 *)
+                If[Part[{firstSigns, secondSigns}, All, 1] // Apply[Equal] // Not,
+                    Message[threadStep::strcase, "2-3", index, "derivative signs mismatch at first tuple " <> ToString[Part[{firstPair, secondPair}, All, 1]] <> ", if 1-1, 2-2."]
+                ];
+                If[((Part[firstPair, -1, 1] - Part[secondPair, 2, 1]) / (Part[secondPair, -1, 1] - Part[secondPair, 2, 1])) > 0.4,
+                    (* 2-3 *)
+                    If[Take[firstSigns, -2] // Apply[Equal],
+                        Message[threadStep::strcase, "2-3", index, "derivative signs are same at last two points " <> ToString[Take[firstPair, -2]] <> ", if 2 forks 2 & 3."]
+                    ];
+                    {1, 2, 2},
+                    (* 3 starts *)
+                    {1, 2, 0}
+                ]
+            ]
 
-    (* Print["Comparing", firstPair, secondPair]; *)
+        ),
+        {2, 2} :> (
+            If[Part[firstPair, 1, 1] < Part[secondPair, 1, 1],
+                (* - *)
+                If[Part[firstPair, -1, 1] < Part[secondPair, 1, 1],
+                    (* --__ *)
+                    If[(Part[firstPair, -1, 1] - Part[firstPair, 1, 1]) / (Part[secondPair, 1, 1] - Part[firstPair, 1, 1]) > 0.6 &&
+                        (Part[secondPair, 1, 1] - Part[firstPair, -1, 1]) / (Part[secondPair, -1, 1] - Part[firstPair, -1, 1]) < 0.4 &&
+                        Part[firstSigns, -1] == Part[lastSigns, 1],
+                        {2, 0},
+                        {0, 0}
+                    ],
+                    (* -_ *)
+                    If[Part[firstPair, -1, 1] > Part[secondPair, -1, 1],
+                        (* -__- *)
+                        If[{firstSigns, secondSigns} // MapThread[Equal] // Apply[And] // Not,
+                            Message[threadStep::strcase, "2-2", index, "derivatives mismatch for " <> ToString[{firstSigns, secondSigns} // Thread]]
+                        ];
+                        (* 1-1, 2-2 *)
+                        If[(Part[secondPair, 1, 1] - Part[firstPair, 1, 1]) / (Part[firstPair, -1, 1] - Part[firstPair, 1, 1]) > 0.4,
+                            Message[threadStep::strcase, "2-2", index, "first tuple doesn't close enough if 1-1: " <> ToString[{firstPair, secondPair}]]
+                        ];
+                        If[(Part[secondPair, -1, 1] - Part[secondPair, 1, 1]) / (Part[firstPair, -1, 1] - Part[secondPair, 1, 1]) < 0.6,
+                            Message[threadStep::strcase, "2-2", index, "first tuple doesn't close enough if 2-2: " <> ToString[{firstPair, secondPair}]]
+                        ];
+                        {1, 2},
+                        (* -_-_ *)
+                        {
+                            (Part[secondPair, 1, 1] - Part[firstPair, 1, 1]) / (Part[firstPair, -1, 1] - Part[firstPair, 1, 1]),
+                            (Part[firstPair, -1, 1] - Part[secondPair, 1, 1]) / (Part[secondPair, -1, 1] - Part[secondPair, 1, 1])
+                        }
+                        // Replace[{
+                            {_?(Between[{0.4, 0.6}]), _?(Between[{0.4, 0.6}])} :> ({{1,2}, 2}),
+                            {_?(Between[{0.4, 0.6}]), _?(LessThan[0.4])} :> ({{1,2}, 0}),
+                            {_?(GreaterThan[0.6]), _?(Between[{0.4, 0.6}])} :> ({2, 2}),
+                            {_?(Between[{0.4, 0.6}]), _?(GreaterThan[0.6])} :> (
+                                Message[threadStep::strcase, "2-2", index, "first tuple doesn't close enough if 1-1: " <> ToString[{firstPair, secondPair}]];
+                                {0, 2}
+                            ),
+                            {_?(LessThan[0.4]), _?(Between[{0.4, 0.6}])} :> (
+                                Message[threadStep::strcase, "2-2", index, "last tuple doesn't close enough if 2-2: " <> ToString[{firstPair, secondPair}]];
+                                {1, 0}
+                            ),
+                            {_?(LessThan[0.4]), _?(GreaterThan[0.6])} :> (
+                                {1, 2}
+                            ),
+                            {_?(GreaterThan[0.6]), _?(LessThan[0.4])} :> (
+                                Message[threadStep::strcase, "2-2", index, "first point isn't continued" <> ToString[{firstPair, secondPair}]];
+                                {2, 0}
+                            ),
+                            {_?(GreaterThan[0.6]), _?(GreaterThan[0.6])} :> (
+                                Message[threadStep::strcase, "2-2", index, "first point isn't continued" <> ToString[{firstPair, secondPair}]];
+                                {0, 2}
+                            ),
+                            {_?(LessThan[0.4]), _?(LessThan[0.4])} :> (
+                                Message[threadStep::strcase, "2-2", index, "second point isn't continued" <> ToString[{firstPair, secondPair}]];
+                                {1, 0}
+                            ),
+                            err_ :> (
+                                Message[threadStep::strcase, "2-2", index, "impossible result when computing ratio: " <> ToString[err]];
+                            )
+                        }]
+                    ]
+                ],
+                (*
+                    _
+                *)
+                If[Part[firstPair, 1, 1] > Part[secondPair, -1, 1],
+                    (* __-- *)
+                    If[(Part[secondPair, -1, 1] - Part[secondPair, 1, 1]) / (Part[firstPair, 1, 1] - Part[secondPair, 1, 1]) > 0.6 &&
+                        (Part[firstPair, 1, 1] - Part[secondPair, -1, 1]) / (Part[firstPair, -1, 1] - Part[secondPair, -1, 1]) < 0.4 &&
+                        Part[firstSigns, 1] == Part[lastSigns, -1],
+                        {0, 1},
+                        {0, 0}
+                    ],
+                    (* _- *)
+                    If[Part[firstPair, -1, 1] < Part[secondPair, -1, 1],
+                        (* _--_ *)
+                        (* 1-1, 2-2 *)
+                        If[{firstSigns, secondSigns} // MapThread[Equal] // Apply[And] // Not,
+                            Message[threadStep::strcase, "2-2", index, "derivatives mismatch for " <> ToString[{firstSigns, secondSigns} // Thread]]
+                        ];
+                        If[(Part[firstPair, 1, 1] - Part[secondPair, 1, 1]) / (Part[firstPair, -1, 1] - Part[secondPair, 1, 1]) > 0.4,
+                            Message[threadStep::strcase, "2-2", index, "first tuple doesn't close enough if 1-1: " <> ToString[{firstPair, secondPair}]]
+                        ];
+                        If[(Part[firstPair, -1, 1] - Part[firstPair, 1, 1]) / (Part[secondPair, -1, 1] - Part[firstPair, 1, 1]) < 0.6,
+                            Message[threadStep::strcase, "2-2", index, "first tuple doesn't close enough if 2-2: " <> ToString[{firstPair, secondPair}]]
+                        ];
+                        {1, 2},
+                        (* _-_- *)
+                        {
+                            (Part[firstPair, 1, 1] - Part[secondPair, 1, 1]) / (Part[secondPair, -1, 1] - Part[secondPair, 1, 1]),
+                            (Part[secondPair, -1, 1] - Part[firstPair, 1, 1]) / (Part[firstPair, -1, 1] - Part[firstPair, 1, 1])
+                        } // Replace[{
+                            {_?(Between[{0.4, 0.6}]), _?(Between[{0.4, 0.6}])} :> ({1, {1,2}}),
+                            {_?(GreaterThan[0.6]), _?(Between[{0.4, 0.6}])} :> ({0, {1, 2}}),
+                            {_?(Between[{0.4, 0.6}]), _?(LessThan[0.4])} :> ({1, 1}),
+                            {_?(Between[{0.4, 0.6}]), _?(GreaterThan[0.6])} :> (
+                                Message[threadStep::strcase, "2-2", index, "first tuple doesn't close enough if 1-1: " <> ToString[{firstPair, secondPair}]];
+                                {0, 2}
+                            ),
+                            {_?(LessThan[0.4]), _?(Between[{0.4, 0.6}])} :> (
+                                Message[threadStep::strcase, "2-2", index, "last tuple doesn't close enough if 2-2: " <> ToString[{firstPair, secondPair}]];
+                                {1, 0}
+                            ),
+                            {_?(LessThan[0.4]), _?(GreaterThan[0.6])} :> (
+                                {1, 2}
+                            ),
+                            {_?(GreaterThan[0.6]), _?(LessThan[0.4])} :> (
+                                Message[threadStep::strcase, "2-2", index, "first point isn't continued: " <> ToString[{firstPair, secondPair}]];
+                                {2, 0}
+                            ),
+                            {_?(GreaterThan[0.6]), _?(GreaterThan[0.6])} :> (
+                                Message[threadStep::strcase, "2-2", index, "first point isn't continued: " <> ToString[{firstPair, secondPair}]];
+                                {0, 2}
+                            ),
+                            {_?(LessThan[0.4]), _?(LessThan[0.4])} :> (
+                                Message[threadStep::strcase, "2-2", index, "second point isn't continued: " <> ToString[{firstPair, secondPair}]];
+                                {1, 0}
+                            ),
+                            err_ :> (
+                                Message[threadStep::strcase, "2-2", index, "impossible result when computing ratio: " <> ToString[err]];
+                                {0, 0}
+                            )
+                        }]
+                    ]
+                ]
+            ]
+        ),
+        {3, 1} :> (
+            Part[secondPair, 1, 1]
+            // Replace[{
+                _?(LessThan[Part[firstPair, 1, 1]]) :> ({1}),
+                _?(LessThan[Part[firstPair, 2, 1]]) :> (
+                    (Part[secondPair, 1, 1] - Part[firstPair, 1, 1]) / (Part[firstPair, 2, 1] - Part[firstPair, 1, 1])
+                    // Replace[{
+                        _?(LessThan[0.4]) :> {1},
+                        _?(Between[{0.4, 0.6}]) :> {{1,2}},
+                        _?(GreaterThan[0.6]) :> {2}
+                    }]
+                ),
+                _?(LessThan[Part[firstPair, 3, 1]]) :> (
+                    (Part[secondPair, 1, 1] - Part[firstPair, 2, 1]) / (Part[firstPair, 3, 1] - Part[firstPair, 2, 1])
+                    // Replace[{
+                        _?(LessThan[0.4]) :> {2},
+                        _?(Between[{0.4, 0.6}]) :> {{2,3}},
+                        _?(GreaterThan[0.6]) :> {3}
+                    }]
+                ),
+                _?(GreaterEqualThan[Part[firstPair, 3, 1]]) :> ({3}),
+                err_ :> (
+                    Message[threadStep::strcase, "3-1", index, "impossible result when computing ratio: " <> ToString[err]];
+                    {0}
+                )
+            }]
+        ),
+        {1, 3} :> (
+            Part[firstPair, 1, 1]
+            // Replace[{
+                _?(LessThan[Part[secondPair, 1, 1]]) :> ({1, 0, 0}),
+                _?(LessThan[Part[secondPair, 2, 1]]) :> (
+                    (Part[firstPair, 1, 1] - Part[secondPair, 1, 1]) / (Part[secondPair, 2, 1] - Part[secondPair, 1, 1])
+                    // Replace[{
+                        _?(LessThan[0.4]) :> {1, 0, 0},
+                        _?(Between[{0.4, 0.6}]) :> {1, 1, 0},
+                        _?(GreaterThan[0.6]) :> {0, 1, 0}
+                    }]
+                ),
+                _?(LessThan[Part[secondPair, 3, 1]]) :> (
+                    (Part[firstPair, 1, 1] - Part[secondPair, 2, 1]) / (Part[secondPair, 3, 1] - Part[secondPair, 2, 1])
+                    // Replace[{
+                        _?(LessThan[0.4]) :> {0, 1, 0},
+                        _?(Between[{0.4, 0.6}]) :> {0, 1, 1},
+                        _?(GreaterThan[0.6]) :> {0, 0, 1}
+                    }]
+                ),
+                _?(GreaterEqualThan[Part[secondPair, 3, 1]]) :> ({0, 0, 1}),
+                err_ :> (
+                    Message[threadStep::strcase, "1-3", index, "impossible result when computing ratio: " <> ToString[err]];
+                    {0}
+                )
+            }]
+        ),
+        {2, 1} :> (
+            If[EuclideanDistance[Part[firstPair, 1], Part[secondPair, 1]] < EuclideanDistance[Part[firstPair, -1], Part[secondPair, 1]],
+                If[Part[firstPair, 1, 1] > Part[secondPair, 1, 1] &&
+                    (Part[firstPair, 1, 1] - Part[secondPair, 1, 1]) / (Part[firstPair, -1, 1] - Part[secondPair, 1, 1]) > 0.6,
+                    Message[threadStep::strcase, "2-1", index, "The first tuple" <> ToString[Part[{firstPair, secondPair}, All, 1, 1]] <> " is further than the second point " <> Part[firstPair, -1, 1] <> ", if 1-1"];
+                    {0},
+                    (* 1-1 *)
+                    If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, 1, 1]] > EuclideanDistance[Part[firstPair, 1, 1], Min[domain]],
+                        Message[threadStep::strcase, "2-1", index, "The first tuple" <> ToString[Part[{firstPair, secondPair}, All, 1]] <> " is further than one of them to the boudary " <> ToString[domain] <> ", if 1-1"]
+                    ];
+                    If[EuclideanDistance[Part[firstPair, -1, 1], Part[secondPair, 1, 1]] < EuclideanDistance[Part[firstPair, -1, 1], Max[domain]] &&
+                        Part[firstPair, 1, 1] < Part[secondPair, 1, 1] < Part[firstPair, -1, 1],
+                        (* 2-1 *)
+                        {{1, 2}},
+                        (* 2 ends *)
+                        {1}
+                    ]
+                ],
+                If[Part[firstPair, -1, 1] < Part[secondPair, 1, 1] &&
+                    (Part[firstPair, -1, 1] - Part[firstPair, 1, 1]) / (Part[secondPair, 1, 1] - Part[firstPair, 1, 1]) < 0.4,
+                    Message[threadStep::strcase, "2-1", index, "The last tuple" <> ToString[Part[{firstPair, secondPair}, All, -1, 1]] <> " is further than the first point " <> Part[firstPair, 1, 1] <> ", if 2-1"];
+                    {0},
+                    (* 2-1 *)
+                    If[EuclideanDistance[Part[firstPair, -1, 1], Part[secondPair, 1, 1]] > EuclideanDistance[Part[firstPair, -1, 1], Max[domain]],
+                        Message[threadStep::strcase, "2-1", index, "The last tuple" <> ToString[Part[{firstPair, secondPair}, All, -1]] <> " is further than one of them to the boudary " <> ToString[domain] <> ", if 2-1"]
+                    ];
+                    If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, 1, 1]] < EuclideanDistance[Part[firstPair, 1, 1], Min[domain]] &&
+                        Part[firstPair, 1, 1] < Part[secondPair, 1, 1] < Part[firstPair, -1, 1],
+                        (* 1-1 *)
+                        {{1, 2}},
+                        (* 1 ends *)
+                        {2}
+                    ]
+                ]
+            ]
+        ),
+        {1, 2} :> (
+            If[EuclideanDistance[Part[firstPair, 1], Part[secondPair, 1]] < EuclideanDistance[Part[firstPair, 1], Part[secondPair, -1]],
+                If[Part[firstPair, 1, 1] < Part[secondPair, 1, 1] &&
+                    (Part[secondPair, 1, 1] - Part[firstPair, 1, 1]) / (Part[secondPair, -1, 1] - Part[firstPair, 1, 1]) > 0.6,
+                    Message[threadStep::strcase, "1-2", index, "The first tuple" <> ToString[Part[{firstPair, secondPair}, All, 1, 1]] <> " is further than the second point " <> Part[secondPair, -1, 1] <> ", if 1-2"];
+                    {0},
+                    (* 1-1 *)
+                    If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, 1, 1]] > EuclideanDistance[Part[secondPair, 1, 1], Min[domain]],
+                        Message[threadStep::strcase, "1-2", index, "The first tuple" <> ToString[Part[{firstPair, secondPair}, All, 1]] <> " is further than each other than one of them to the boudary " <> ToString[domain] <> ", if 1-1"]
+                    ];
+                    If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, -1, 1]] < EuclideanDistance[Part[secondPair, -1, 1], Max[domain]],
+                        (* 1-2 *)
+                        {1, 1},
+                        (* 2 starts *)
+                        {1, 0}
+                    ]
+                ],
+                If[Part[firstPair, 1, 1] > Part[secondPair, -1, 1] &&
+                    (Part[secondPair, -1, 1] - Part[secondPair, 1, 1]) / (Part[firstPair, 1, 1] - Part[secondPair, 1, 1]) < 0.4,
+                    Message[threadStep::strcase, "1-2", index, "The first tuple" <> ToString[Part[{firstPair, secondPair}, All, 1, 1]] <> " is further than the second point " <> Part[secondPair, -1, 1] <> ", if 1-2"];
+                    {0},
+                    (* 1-2 *)
+                    If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, -1, 1]] > EuclideanDistance[Part[secondPair, -1, 1], Max[domain]],
+                        Message[threadStep::strcase, "1-2", index, "The last tuple" <> ToString[Part[{firstPair, secondPair}, All, -1]] <> " is further than each other than one of them to the boudary " <> ToString[domain] <> ", if 1-2"]
+                    ];
+                    If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, 1, 1]] < EuclideanDistance[Part[secondPair, 1, 1], Min[domain]],
+                        (* 1-1 *)
+                        {1, 1},
+                        (* 1 starts *)
+                        {0, 1}
+                    ]
+                ]
+            ]
 
-    If[Length @ firstPair == Length @ secondPair,
-       (* same length*)
-       If[(Positive /@ Part[firstPair, All, 2]) === (Positive /@ Part[secondPair, All, 2]),
-          (* derivaive match *)
-          Return[Table[0, Length @ firstPair]],
-          (* one-off *)
-          If[Abs[Part[firstPair, 1, 1] - Part[secondPair, -1, 1]] > Abs[Part[firstPair, -1, 1] - Part[secondPair, 1, 1]],
-             Return[Table[-1, Length @ firstPair]],
-             Return[Table[1, Length @ firstPair]]
-          ]
-       ],
-
-       (* not same length*)
-       If[Abs[Length @ firstPair - Length @ secondPair] == 1,
-          (* 3-2, 2-3, 2-1 or 1-2 *)
-          If[Positive @ Part[firstPair, 1, 2] === Positive @ Part[secondPair, 1, 2],
-              Return[Table[0, Length @ firstPair]],
-              If[Length @ firstPair > Length @ secondPair,
-                Return[Table[-1, Length @ firstPair]],
-                Return[Table[1, Length @ firstPair]]
-              ]
-          ],
-          (* 3-1 or 1-3*)
-          If[Length @ firstPair > Length @ secondPair,
-             (* 3-1 *)
-             Return[Table[1 - First @ FirstPosition[Part[firstPair, All, 1], First @ Nearest[Part[firstPair, All, 1], Part[secondPair, 1, 1]]], 3]],
-             (* 1-3 *)
-             Return[FirstPosition[Part[secondPair, All, 1], First @ Nearest[Part[secondPair, All, 1], Part[firstPair, 1, 1]]] - 1]
-          ]
-
-       ]
-
-    ]
-
-)
+        ),
+        {1, 1} :> (
+            If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, 1, 1]] < RegionMeasure[domain] / 3,
+                (* 1-1 *)
+                {1},
+                (* 1 ends, 1 starts*)
+                {0}
+            ]
+        ),
+        {len1_, len2_} :> (Message[threadStep::strcase, ToString[len1] <> "-" <> ToString[len2], index, "wrong lengths or case not handled"])
+    }]
+]
 
 
 (*
     Rare cases where there is not enough tuples in the list,
     not insteresting
 *)
-threadZeros[{}] := {{}, {}}
-threadZeros[{zeroTuple_}] := Transpose[{Part[zeroTuple, All, 1]}]
+ThreadZeros[{}, (*domain*)_Interval] := {{}, {}}
+ThreadZeros[{zeroTuple_}, (*domain*)_Interval] := Transpose[{Part[zeroTuple, All, 1]}]
 (* Use Thread to divide tuples into different branches *)
-threadZeros[zeroTuples:{_, __}] := Module[
+ThreadZeros[zeroTuples:{_, __}, domain_Interval] := With[
     {
-        steps = MapThread[threadStep, {Most @ zeroTuples, Rest @ zeroTuples}]
+        steps = MapThread[threadStep[#1, #2, #3, domain]&, {
+            Prepend[zeroTuples // Most, {}],
+            zeroTuples,
+            Range[0, Length[zeroTuples] - 1]
+        }]
     },
 
-    AllLines[Fold[threadLine, NewThread[zeroTuples], steps]]
+    Fold[threadLine, <|"beads" -> zeroTuples, "terminated" -> {}, "active" -> {}, "position" -> 0|>, steps]
+    // Flatten[#active ~Join~ #terminated]&
+	// Map[Table[Missing[], #start] ~Join~ #beads ~Join~ Table[Missing[], Length[zeroTuples] - #start - Length[#beads]]&]
 ]
 
 

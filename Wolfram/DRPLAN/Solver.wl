@@ -29,7 +29,7 @@ ClearAll[Evaluate[Context[] <> "*"]]
 SolveDRPlan::usage = "SolveDRPlan[node_DRNode] solves a DRPlan by passing in the root DR-node."
 SolveNode::usage = "SolveNode[node_DRNode] solves the input node and its sub-nodes and returns all solutions.
 SolveNode[node_DRNode, dFlip:(All | _List)] solves the node only for specified D-flip."
-InterpolatingFunctionGroup::usage = "A group of interpolating functions for smoothing purpose."
+InterpolatingFunctionGroup::usage = "A group of interpolating functions for smoothing / piece-wise purpose."
 ToPlanSolution::usage = "ToPlanSolution[nodeSolution_NodeSolution] turns a node solution for the root node to a plan solution."
 NodeSolution::usage = "An object that contains the information for a node solution."
 $NodeSolutionCallback::usage = "$NodeSolutionCallback[sols_List, node_DRNode] is a hook function that will be called when a node is solved. \
@@ -49,18 +49,23 @@ UnEcho = (#1&)
 PrintEcho = ((Print[#1];#1)&)
 
 
-InterpolatingFunctionGroup /: MakeBoxes[InterpolatingFunctionGroup[ifs:{__InterpolatingFunction}], StandardForm] := 
-Construct[MakeBoxes, InterpolatingFunctionGroup[Panel[Column @ ifs]], StandardForm]
+InterpolatingFunctionGroup /: MakeBoxes[group:InterpolatingFunctionGroup[ifs__InterpolatingFunction], StandardForm] :=
+    BoxForm`ArrangeSummaryBox[InterpolatingFunctionGroup, sol, (*icon=*)None, {
+        BoxForm`SummaryItem[{"InterpolatingFunctions: ", Column@{ifs}}]
+    }, {}, StandardForm, "Interpretable" -> Automatic]
 
 
-NodeSolution /: MakeBoxes[NodeSolution[solution_Association, domain_Association, dFlip_List, cFlip_Association], StandardForm] := 
-Construct[MakeBoxes, NodeSolution[Panel[Grid[{
-    {"Solution:", SpanFromLeft},
-    {Panel[Column @ Normal @ solution], SpanFromLeft},
-    {"Domain:", Panel[Column @ Normal @ domain]},
-    {"D-Flip:", Panel[dFlip]},
-    {"C-Flip:", cFlip}
-}, Alignment -> {{Left, Left}}]]], StandardForm]
+NodeSolution /: MakeBoxes[sol:NodeSolution[solution_Association, domain_Association, dFlip_List, cFlip_Association], StandardForm] :=
+    BoxForm`ArrangeSummaryBox[NodeSolution, sol, (*icon=*)None,
+        {
+            BoxForm`SummaryItem[{"Solution: ", Column @ Normal @ solution}],
+            BoxForm`SummaryItem[{"Domain: ", Column @ Normal @ domain}]
+        },
+        {
+            BoxForm`SummaryItem[{"D-Flip: ", dFlip}],
+            BoxForm`SummaryItem[{"C-Flip: ", cFlip}]
+        },
+    StandardForm, "Interpretable" -> Automatic]
 
 
 ToString[NodeSolution[solution_Association, domain_Association, dFlip_List, cFlip_Association]] ^:= StringJoin[
@@ -819,10 +824,10 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
         ];
 
     ];
-    
+
     (*Print[sampleLists];*)
     (* interpZeros[firstSamples, #]& /@ Transpose[firstResults] *)
-    (* Echo@threadZeros[Identity@@@Select[finalResults, Not@*MissingQ]]; *)
+    (* Echo@ThreadZeros[Identity@@@Select[finalResults, Not@*MissingQ]]; *)
     (* Abort[]; *)
     MapIndexed[
         Check[
@@ -831,7 +836,7 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
             {Interpolation::inddp}
         ]&,
         (* see Thread.wl *)
-        threadZeros[Identity@@@Select[finalResults, Not@*MissingQ]]
+        ThreadZeros[Identity@@@Select[finalResults, Not@*MissingQ], domain[node["TargetCayley"]]]
     ]
 
 ]
@@ -988,7 +993,7 @@ AlternativeInterpolation[list_List] := Module[
     },
 
     If[Length[list] < 6,
-        Return[InterpolatingFunctionGroup[{Interpolation[list, InterpolationOrder -> 3, Method -> "Hermite"]}]]
+        Return[InterpolatingFunctionGroup[Interpolation[list, InterpolationOrder -> 3, Method -> "Hermite"]]]
     ];
 
     first = First[list];
@@ -998,17 +1003,26 @@ AlternativeInterpolation[list_List] := Module[
     interpOdd = Interpolation[Join[{first}, midOdd, {last}], InterpolationOrder -> 3, Method -> "Hermite"];
     interpEven = Interpolation[Join[{first}, midEven, {last}], InterpolationOrder -> 3, Method -> "Hermite"];
 
-    InterpolatingFunctionGroup[{interpOdd, interpEven}]
+    InterpolatingFunctionGroup[interpOdd, interpEven]
 
 ]
 
 
-(* AveragingInterpolations[ifs:{__InterpolatingFunction}] := Interpretation[
-    Row[{"InterpolatingFunctionGroup", "[", Panel[Row[{Nothing, Column[ifs]}]], "]"}],
-    InterpolatingFunctionGroup[ifs]
-] *)
-InterpolatingFunctionGroup[ifs:{__InterpolatingFunction}][x:(_?NumericQ | {__?NumericQ})] := Mean[Through[ifs[x]]]
-InterpolatingFunctionGroup[ifs:{__InterpolatingFunction}]["Domain"] := First[ifs]["Domain"]
+SetAttributes[InterpolatingFunctionGroup, Flat]
+InterpolatingFunctionGroup[ifs__InterpolatingFunction][x:(_?NumericQ | {__?NumericQ})] := (
+    Table[
+        Quiet[Check[if[x], Nothing, {InterpolatingFunction::dmval}], {InterpolatingFunction::dmval}],
+        {if, {ifs}}
+    ] // Replace[{} :> {
+        Echo["Indeterminate"];
+        Echo[{ifs}, "ifs"];
+        Echo[x, "x"];
+        Indeterminate
+    }] // Mean
+)
+InterpolatingFunctionGroup[ifs__InterpolatingFunction]["Domain"] := (
+    Interval @@@ Transpose[Through[{ifs}["Domain"]]]
+)
 
 
 findApproxIntervals[samplePoints_SparseArray, threshold_?NumericQ] := Module[
@@ -1212,10 +1226,11 @@ getBoundaryApproxZeros[sampleList_SparseArray, zeroIntervals:{__}] := (
 )
 
 
-interpZeros[node_DRNode, nodeSolution_NodeSolution, samples_, sampleList:{(_?NumericQ|_Missing)..}, index_Integer] := Module[
+(* Only works for flex-1 *)
+interpZeros[node_DRNode, nodeSolution_NodeSolution, samples_, sampleList:{(_?NumericQ|InterpolationPiece[_?NumericQ]|_Missing)..}, index_Integer] := Block[
     {
         solution, dflip, cflip,
-        interpList, zeroFunc, targetRule,
+        samplePoints, splitPos, zeroFunc, targetRule,
         newSolution, newDomain, newDFlip
     },
 
@@ -1223,28 +1238,30 @@ interpZeros[node_DRNode, nodeSolution_NodeSolution, samples_, sampleList:{(_?Num
     dflip =  Part[nodeSolution, 3];
     cflip = Part[nodeSolution, 4];
     zeroFunc = If[Length[node["FreeCayley"]] > 0,
-    (* Ci vs C1 *)
-        interpList = DeleteMissing[Transpose[{samples, sampleList}], 1, 1];
-            If[Length[interpList] <= 4,
-            (* not enough samples *)
-                Return[{}]
-            ];
-        AlternativeInterpolation[interpList],
-        (* Interpolation[interpList, InterpolationOrder -> 3, Method -> "Hermite"], *)
-        (* Interpolation[interpList, InterpolationOrder -> 3, Method -> "Spline"], *)
-    (* the last Cayley C1 *)
+        (* Ci vs C1 *)
+        samplePoints = DeleteMissing[Transpose[{samples, sampleList}], 1, 1];
+        splitPos = {1} ~Join~ Flatten[Position[samplePoints, {_, _InterpolationPiece}, {1}]] ~Join~ {-1};
+        Table[
+            ClearAll[x];
+            Replace[Length[interpList], {
+                0|1 -> Nothing,
+                len_?(LessThan[8]) :> Interpolation[interpList, InterpolationOrder -> Min[len - 1, 3], Method -> "Hermite"],
+                _ :>  AlternativeInterpolation[interpList]
+            }], {interpList, BlockMap[Take[Replace[samplePoints, InterpolationPiece[p_] :> p, {2}], #]&, splitPos, 2 ,1]}
+        ]
+        // Apply[InterpolatingFunctionGroup]
+        // Replace[InterpolatingFunctionGroup[] :> Return[{}]],
+        (* the last Cayley C1 *)
         Function[{const}, (const &)] @@ sampleList
     ];
     (*Print[zeroFunc[1]];*)
 
-    targetRule = (Construct[Lookup, node["TargetCayley"]] -> (
-        zeroFunc
-        @* (Sequence@@#&)
-        @* (Curry[Through[#1[#2]]&, 2][Lookup /@ node["FreeCayley"]]))
-    );
+    targetRule = ((node["TargetCayley"] // Key) -> (
+        (node["FreeCayley"] // Map[Key]) /* Through /* Apply[zeroFunc]
+    ));
 
     newSolution = (solution /. targetRule);
-    newDomain = AssociationThread[node["FreeCayley"], Interval /@ zeroFunc["Domain"]];
+    newDomain = AssociationThread[node["FreeCayley"], zeroFunc["Domain"]];
     newDFlip = ReplacePart[dflip, 1 -> index];
     NodeSolution[newSolution, newDomain, newDFlip, cflip]
 ]
