@@ -32,6 +32,8 @@ SolveNode[node_DRNode, dFlip:(All | _List)] solves the node only for specified D
 InterpolatingFunctionGroup::usage = "A group of interpolating functions for smoothing purpose."
 ToPlanSolution::usage = "ToPlanSolution[nodeSolution_NodeSolution] turns a node solution for the root node to a plan solution."
 NodeSolution::usage = "An object that contains the information for a node solution."
+$NodeSolutionCallback::usage = "$NodeSolutionCallback[sols_List, node_DRNode] is a hook function that will be called when a node is solved. \
+The input will the solutions of the node and level that node is at. The output must be a list of solutions that will be returned to its parent node."
 PlanErrorMap::usage = "PlanErrorMap[node_DRNode, planSolution_PlanSolution] returns an association that maps edge to {absoluteError, relativeError}."
 PlanEdgeError::usage = "PlanEdgeError[node_DRNode, planSolution_PlanSolution, o:OptionsPattern[]] returns the errors of the dropped edges."
 SimilarPlanQ::usage = "SimilarPlanQ[planSolution1_PlanSolution, planSolution2_PlanSolution] returns True if two plan solutions are similar to each other."
@@ -285,7 +287,10 @@ SolveDRPlan[node_DRNode, o:OptionsPattern[]] := Block[
         Power[2, node["TwoTreeVertexCount"]],
         1
     ];
-    node["FlipSolutions"] = <||>;
+
+    If[!AssociationQ[node["FlipSolutions"]],
+        node["FlipSolutions"] = <||>
+    ];
     Table[
         Print[StringTemplate["Solving Two-tree flip: `1` / `2`"][flip, flipsToSolve]];
         curSolutions = ToPlanSolution /@ SolveNode[node, All, o];
@@ -301,6 +306,11 @@ ToPlanSolution[nodeSolution_NodeSolution] := (
 
     PlanSolution[(#[{}]&) /@ Part[nodeSolution, 1], Part[nodeSolution, 3], Part[nodeSolution, 4]]
 )
+
+
+(* $NodeSolutionCallback should fall back to no-op *)
+Unset[$NodeSolutionCallback] ^:= ($NodeSolutionCallback = #&;)
+Unset[$NodeSolutionCallback]
 
 (*
     Options:
@@ -355,14 +365,14 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
         ]);
         UnEcho[#, "nodeSolutions", (ToString/@#)&]& @ {
             NodeSolution[
-                <|node["TargetCayley"] -> (First @* (Curry[Through[#1[#2]]&, 2][Lookup /@ node["FreeCayley"]]))|>, (* identity function *)
+                <|node["TargetCayley"] -> ((node["FreeCayley"] // Map[Key]) /* Through /* First)|>, (* identity function *)
                 <|node["TargetCayley"] -> node["Interval"]|>, (* domain *)
                 {1}, (* D-flip index *)
                 <||> (* overwriting the C-flip*)
             ],
             If[allCFlip,
                 NodeSolution[
-                    <|node["TargetCayley"] -> (First @* (Curry[Through[#1[#2]]&, 2][Lookup /@ node["FreeCayley"]]))|>, (* identity function *)
+                    <|node["TargetCayley"] -> ((node["FreeCayley"] // Map[Key]) /* Through /* First)|>, (* identity function *)
                     <|node["TargetCayley"] -> node["Interval"]|>, (* domain *)
                     {1}, (* D-flip index *)
                     <|cayleyVertex -> !PropertyValue[{rootgraph, cayleyVertex}, "Flip"]|> (* overwriting the C-flip*)
@@ -412,7 +422,7 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
         (* Prepare Immutable data for parallelism*)
         nodeI = PersistDRNode[node];
 
-        $SowSampleList = sowSampleList;
+        (* $SowSampleList = sowSampleList; *)
 
         (* Solve a flip *)
         {solutions, $sampleLists} = If[parallelize,
@@ -433,7 +443,7 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
         $sampleLists = Flatten[$sampleLists, 1];
 
         (* Memoization *)
-        node["Solutions"] = Part[Flatten[solutions], curDFlip];
+        node["Solutions"] = $NodeSolutionCallback[Part[Flatten[solutions], curDFlip], node];
         PrintProgress[node];
         node["Solutions"]
     ]
@@ -767,22 +777,22 @@ SolveDFlip[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := M
     {sampleNum, firstSamples} = If[node["FreeCayley"] =!= {},
         (* only handles flex-1 case*)
         Values[
-            Curry[getSamples][node["Root"]["PlanShortestEdge"]]
-            /@ KeyTake[domain, First[node["FreeCayley"]]]
+            KeyTake[domain, First[node["FreeCayley"]]]
+            // Map[getSamples[#, node["Root"]["PlanShortestEdge"]]&]
         ] // First,
         Echo["Last Cayley"];
         (* $on = True; *)
         {0, <||>}
     ];
-    
+
     (* $on = False; *)
     (* If[$on, Echo[firstSamples]]; *)
     (* Echo[node["FreeCayley"]]; *)
     firstResults = If[node["FreeCayley"] === {},
         {Tuple[scanSamples[node, nodeSolution, dropOffset][<||>]]},
-        (Replace[freeSample:Except[_Missing] :> (
+        Replace[firstSamples, freeSample:Except[_Missing] :> (
             Tuple[scanSamples[node, nodeSolution, dropOffset][<|First[node["FreeCayley"]] -> freeSample|>]]
-        )] /@ firstSamples)
+        ), {1}]
     ];
     (* If[$on, Echo[firstResults]]; *)
     (* Echo[firstResults]; *)
@@ -902,11 +912,11 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
     (* sampleLists = sampleList; *)
 
     (* To draw 3D points plot, uncomment the following line *)
-    If[$SowSampleList,
+    (* If[$SowSampleList,
         sampleList // ArrayRules // Most
         // Cases[({pos_} -> Pair[x_, y_]) :> {freeSample[First@node["FreeCayley"]], x, y}]
         // Sow
-    ];
+    ]; *)
 
     (* If[MatchQ[sampleList, {_Real, _Real}],
         Print[targets]
