@@ -223,7 +223,7 @@ NodeManipulateRenderingFunction[node_DRNode, nodeSolution_NodeSolution, freeCayl
     },
 
     cayleyLength = (#[freeCayleys]&) /@ First[nodeSolution];
-    graph = DRPLAN`Solver`Private`Realize[node, PlanSolution[cayleyLength, <||>, <||>]];
+    graph = DRPLAN`Solver`Private`Realize[node, PlanSolution[cayleyLength, GetFlip[node], {}]];
     If[FailureQ[graph], Return[$Failed]];
 
     cayleyEdges = Flatten @ {
@@ -281,7 +281,7 @@ Options[AnalyzeSolution] = {
 
 AnalyzeSolution::invp = "Property `1` should be All or a proper list."
 AnalyzeSolution[node_DRNode, cayleyLength_Association] :=
-    AnalyzeSolution[node, PlanSolution[cayleyLength, <||>]]
+    AnalyzeSolution[node, PlanSolution[cayleyLength, GetFlip[node], {}]]
 AnalyzeSolution[node_DRNode, planSolution_PlanSolution, o:OptionsPattern[]] := Module[
     {
         properties, withGraph = False, withError = False,
@@ -316,9 +316,8 @@ AnalyzeSolution[node_DRNode, planSolution_PlanSolution, o:OptionsPattern[]] := M
     Grid[{{
         If[withGraph, Grid[{
             {Graph[resultGraph, Options[originGraph, EdgeStyle], ImageSize -> 400], SpanFromLeft},
-            {Style["Flip Vector: ", Bold], GetFlip[node, Part[planSolution, 3]]},
-            {"D-Flips: ", Pane[Part[planSolution, 2], 300]},
-            {"C-Flips: ", Pane[Part[planSolution, 3], 300]},
+            {Style["Flip Vector: ", Bold], Part[planSolution, 2]},
+            {"D-Flips: ", Pane[Part[planSolution, 3], 300]},
             {Style["Abs Error: ", Bold], Row[With[
                 {
                     errors = Abs[PlanEdgeError[node, errorMap]]

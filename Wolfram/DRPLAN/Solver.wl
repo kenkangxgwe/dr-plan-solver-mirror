@@ -30,7 +30,7 @@ SolveDRPlan::usage = "SolveDRPlan[node_DRNode] solves a DRPlan by passing in the
 SolveNode::usage = "SolveNode[node_DRNode] solves the input node and its sub-nodes and returns all solutions.
 SolveNode[node_DRNode, dFlip:(All | _List)] solves the node only for specified D-flip."
 InterpolatingFunctionGroup::usage = "A group of interpolating functions for smoothing / piece-wise purpose."
-ToPlanSolution::usage = "ToPlanSolution[nodeSolution_NodeSolution] turns a node solution for the root node to a plan solution."
+ToPlanSolution::usage = "ToPlanSolution[node_DRNode, nodeSolution_NodeSolution] turns a node solution for the root node to a plan solution."
 NodeSolution::usage = "An object that contains the information for a node solution."
 $NodeSolutionCallback::usage = "$NodeSolutionCallback[sols_List, node_DRNode] is a hook function that will be called when a node is solved. \
 The input will the solutions of the node and level that node is at. The output must be a list of solutions that will be returned to its parent node."
@@ -101,16 +101,16 @@ Realize[node_DRNode] := Module[
     },
 
     cayleyLength = <| # -> PropertyValue[{node["Root"]["Graph"], #}, EdgeWeight]& /@ node["AllCayley"] |>;
-    Realize[node, PlanSolution[cayleyLength, <||>]]
+    Realize[node, PlanSolution[cayleyLength, GetFlip[node], {}]]
 ]
 
-Realize[node_DRNode, PlanSolution[cayleyLength_Association, _, cFlip_Association]] := Module[
+Realize[node_DRNode, PlanSolution[cayleyLength_Association, flipVectors_List, _]] := Module[
     {
         coordsList
     },
 
     Check[
-        coordsList = calcCoords[node, VertexList[node["Graph"]], cayleyLength, cFlip];
+        coordsList = calcCoords[node, cayleyLength, flipVectors];
         Subgraph[node["Graph"], Keys[coordsList], VertexCoordinates -> Normal@coordsList, VertexLabels->"Name"],
         $Failed
     ]
@@ -161,12 +161,12 @@ Options[SimilarPlanQ] = {
 SimilarPlanQ[
     PlanSolution[
         cayleyLength1_Association,
-        _,
-        cFlip1_Association
+        flipVector1_List,
+        _
     ], PlanSolution[
         cayleyLength2_Association,
-        _,
-        cFlip2_Association
+        flipVector2_List,
+        _
     ],
     o: OptionsPattern[]
 ] := Module[
@@ -176,7 +176,7 @@ SimilarPlanQ[
 
     {threshold} = OptionValue[SimilarPlanQ, {o}, {"Threshold"}];
 
-    If[cFlip1 =!= cFlip2,
+    If[flipVector1 =!= flipVector2,
         Return[False]
     ];
 
@@ -202,12 +202,12 @@ SimilarPlanQ[
 PlanDiversity[
     {PlanSolution[
         cayleyLength1_Association,
-        dFlip1_List,
-        cFlip1_Association
+        flipVector1_List,
+        dFlip1_List
     ], PlanSolution[
         cayleyLength2_Association,
-        dFlip2_List,
-        cFlip2_Association
+        flipVector1_List,
+        dFlip2_List
     ]},
     root_DRNode
 ] := Module[
@@ -229,7 +229,7 @@ PlanDiversity[
     // SortBy[Minus]
     // RotateRight;
 
-    cDiversity = {cFlip1, cFlip2}
+    cDiversity = {flipVector1, flipVector2}
     // Map[Keys]
     // Apply[Complement[Union[#1, #2], Intersection[#1, #2]]&]
     // Min
@@ -298,7 +298,7 @@ SolveDRPlan[node_DRNode, o:OptionsPattern[]] := Block[
     ];
     Table[
         Print[StringTemplate["Solving Two-tree flip: `1` / `2`"][flip, flipsToSolve]];
-        curSolutions = ToPlanSolution /@ SolveNode[node, All, o];
+        curSolutions = ToPlanSolution[node, #]& /@ SolveNode[node, All, o];
         If[Length[curSolutions] != 0,
             Print[StringTemplate["`1` solutions found for DR-Plan at flip: `2`"][Length[curSolutions], ToString[GetFlip[node]]]];
         ];
@@ -307,9 +307,8 @@ SolveDRPlan[node_DRNode, o:OptionsPattern[]] := Block[
     ];
 ]
 
-ToPlanSolution[nodeSolution_NodeSolution] := (
-
-    PlanSolution[(#[{}]&) /@ Part[nodeSolution, 1], Part[nodeSolution, 3], Part[nodeSolution, 4]]
+ToPlanSolution[node_DRNode, nodeSolution_NodeSolution] := (
+    PlanSolution[(#[{}]&) /@ Part[nodeSolution, 1], GetFlip[node, Part[nodeSolution, 4]], Part[nodeSolution, 3]]
 )
 
 
@@ -534,9 +533,9 @@ calcCoords::nosol = "The graph is not realizable."
 calcCoords::negdel = "The determinant `1` is negative at vertex `2` with cayleylength `3`."
 calcCoords::ntwotr = "The graph is not a two tree because there are more than two base vertices `2` connected to `1`."
 calcCoords::nttedge = "The edge `1` is has \"EdgeType\" `2` which is not included in the two-tree."
-calcCoords[node_DRNode, vertices_List, CayleyLength_Association, CayleyFlip_Association] := Module[
+calcCoords[node_DRNode, cayleyLength_Association, flipVector_List] := Block[
     {
-        v1, v2
+        vertices = VertexList[node["Graph"]], v1, v2
     },
 
     If[Length[vertices] > 2,
@@ -548,20 +547,18 @@ calcCoords[node_DRNode, vertices_List, CayleyLength_Association, CayleyFlip_Asso
                 v1 -> {0, 0},
                 v2 -> {PropertyValue[{node["Root"]["Graph"], v1<->v2}, EdgeWeight], 0}
             |>
-        } // calcCoordsImpl[node, CayleyLength, CayleyFlip],
+        } // calcCoordsImpl[node["Root"]["Graph"], cayleyLength, flipVector],
         <||>
     ]
-
 ] // Replace[err:Except[_Association] :> (Echo[err, "calcCoords returns"]; Abort[])]
 
-calcCoordsImpl[node_DRNode, CayleyLength_Association, CayleyFlip_Association][
+calcCoordsImpl[rootgraph_Graph, cayleyLength_Association, flipVector_List][
     {{(* no vertices *)}, coordsList:Association[(_Integer -> {_?NumericQ, _?NumericQ})...]}
 ] := coordsList
-calcCoordsImpl[node_DRNode, CayleyLength_Association, CayleyFlip_Association][
+calcCoordsImpl[rootgraph_Graph, cayleyLength_Association, flipVector_List][
     {{v0_Integer, restVertices___}, coordsList_Association}
-] := Module[
+] := Block[
     {
-        rootgraph = node["Root"]["Graph"],
         (* vertices *) v1, v2,
         (* coordinates *) c1, c2,
         (* distances between vertices *) d0, d1, d2,
@@ -591,7 +588,7 @@ calcCoordsImpl[node_DRNode, CayleyLength_Association, CayleyFlip_Association][
     {d0, d1, d2} = Table[
         PropertyValue[{rootgraph, e}, "EdgeType"]
         // Replace[{
-            "Add" :> CayleyLength[EdgeIndex[rootgraph, e]],
+            "Add" :> cayleyLength[EdgeIndex[rootgraph, e]],
             "Partial" :> PropertyValue[{rootgraph, e}, EdgeWeight],
             err_ :> (Message[calcCoords::nttedge, e, err]; Abort[])
         }],
@@ -604,13 +601,13 @@ calcCoordsImpl[node_DRNode, CayleyLength_Association, CayleyFlip_Association][
     md = (d1 + d2) / 2;
     delta = Max[(Chop[(d0 - dd) * (md - d0 / 2)] * (d0 + dd) * (md + d0 / 2)), 0]
     // Replace[err:Except[_?NumericQ] :> (
-        Print["delta: ", err, {d1, d2}, CayleyLength];
+        Print["delta: ", err, {d1, d2}, cayleyLength];
         Abort[]
     )];
 
     If[delta < 0,
-        Message[calcCoords::negdel, delta, v0, CayleyLength];
-        (* Echo[CayleyLength, "CayleyLength"]; *)
+        Message[calcCoords::negdel, delta, v0, cayleyLength];
+        (* Echo[cayleyLength, "CayleyLength"]; *)
         (* Echo[t`$rd, "Refined Domain"];
         Echo[d0, "d0"];
         Echo[dd, "dd"];
@@ -619,12 +616,7 @@ calcCoordsImpl[node_DRNode, CayleyLength_Association, CayleyFlip_Association][
         (* Return["Unrealizable"]; *)
         {{(* stop recursion *)}, coordsList},
 
-        sign = If[KeyMemberQ[CayleyFlip, v0],
-            (* overwrite default flips *)
-            If[CayleyFlip[v0], 1, -1],
-            If[PropertyValue[{rootgraph, v0}, "Flip"], 1, -1]
-        ];
-
+        sign = If[MemberQ[flipVector, v0], 1, -1];
         {
             {restVertices},
             Append[
@@ -645,7 +637,7 @@ calcCoordsImpl[node_DRNode, CayleyLength_Association, CayleyFlip_Association][
 
     ]
 
-] // Replace[Return[val_] :> val] // calcCoordsImpl[node, CayleyLength, CayleyFlip]
+] // Replace[Return[val_] :> val] // calcCoordsImpl[rootgraph, cayleyLength, flipVector]
 
 
 dropLength[node_DRNode] := With[
@@ -738,7 +730,7 @@ getSamples[interval_Interval, planShortestEdge_?NumericQ] := Module[
 (*refineInterval*)
 
 
-refineInterval[node_DRNode, TargetCayley_, CayleyLength_Association] := Module[
+refineInterval[node_DRNode, TargetCayley_, cayleyLength_Association] := Module[
     {
         graph = node["Graph"], rootgraph = node["Root"]["Graph"], targetedge,
         v1, v2, commonvertex, d1, d2
@@ -750,7 +742,7 @@ refineInterval[node_DRNode, TargetCayley_, CayleyLength_Association] := Module[
     commonvertex = Min[AdjacencyList[graph, v1] ~Intersection~ AdjacencyList[graph, v2]];
     {d1, d2} = Function[{edge},
         If[PropertyValue[{rootgraph, edge}, "EdgeType"] == "Add",
-           CayleyLength[EdgeIndex[rootgraph, edge]] // Replace[_Missing :> (Echo@CayleyLength; Abort[])],
+           cayleyLength[EdgeIndex[rootgraph, edge]] // Replace[_Missing :> (Echo@cayleyLength; Abort[])],
            PropertyValue[{rootgraph, edge}, EdgeWeight]
         ]
     ] /@ {UndirectedEdge[commonvertex, v1], UndirectedEdge[commonvertex, v2]};
@@ -940,7 +932,7 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
                 interpd = interp';
                 tmpZeros = (findZeros[interp, interpSampleList])
                 // Replace[_findZeros :> (
-                    (* wront type *)
+                    (* wrong type *)
                     Echo[sampleList];
                     Abort[]
                 )],
@@ -976,13 +968,13 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
 
 ]
 
-realizeNode[node_DRNode, Solution_Association, TFlip_Association, sample_Association] := With[
+realizeNode[node_DRNode, solution_Association, tFlip_Association, sample_Association] := With[
     {
-        cayleyLength = ((#[sample]&) /@ Solution)
+        cayleyLength = ((#[sample]&) /@ solution)
     },
 
     Check[
-        calcCoords[node, VertexList[node["Graph"]], cayleyLength, TFlip],
+        calcCoords[node, cayleyLength, GetFlip[node, tFlip]],
         $Failed
     ]
 ]

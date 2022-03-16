@@ -31,7 +31,7 @@ and pause until it found one solution."
 SolveAllOffsetsContinue::usage = "SolveAllOffsetsContinue[] continues the search that SolveAllOffsetsStart started last time." 
 OffsetSolution::usage = "An object that contains the information for a offset solution."
 ToPlanSolution::usage = StringJoin[ToPlanSolution::usage, "\n",
-    "ToPlanSolution[offsetSolution_OffsetSolution] turns a offset solution for the root node to a list of plan solutions."
+    "ToPlanSolution[node_DRNode, offsetSolution_OffsetSolution] turns a offset solution for the root node to a list of plan solutions."
 ]
 
 
@@ -165,8 +165,8 @@ ChainDiverseLevelImpl[dFlips_List, height_Integer] := ChainDiverseLevelImpl[
 
 
 (* Extends DRPLAN`Solver`ToPlanSolution *)
-ToPlanSolution[OffsetSolution[{nodeSolutions__NodeSolution}, __]] :=
-    ToPlanSolution /@ {nodeSolutions}
+ToPlanSolution[node_DRNode, OffsetSolution[{nodeSolutions__NodeSolution}, __]] :=
+    ToPlanSolution[node, #]& /@ {nodeSolutions}
 
 
 Options[SolveAllOffsetsStart] = {
@@ -327,7 +327,7 @@ If[node["Root"] === node,
     Table[
         Replace[offsetSolution,
             OffsetSolution[nodeSolutions:{__NodeSolution}, offsets_Association, _DRNode] :> 
-                OffsetSolution[getPlanSolution /@ nodeSolutions, offsets, node]
+                OffsetSolution[ToPlanSolution[node, #]& /@ nodeSolutions, offsets, node]
         ],
         {offsetSolution, node["OffsetSolutions"]}
     ],

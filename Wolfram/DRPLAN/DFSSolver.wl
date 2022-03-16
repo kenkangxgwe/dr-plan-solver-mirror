@@ -30,7 +30,7 @@ DFSSolvingStart::usage = "DFSSolvingStart[root_DRNode] solves in DFS manner and 
 DFSSolvingContinue::usage = "DFSSolvingContinue[] continues the DFS paused last time." 
 DFSSolution::usage = "An object that contains the information for a DFS solution."
 ToPlanSolution::usage = StringJoin[ToPlanSolution::usage, "\n",
-    "ToPlanSolution[dfsSolution_DFSSolution] turns a DFS solution for the root node to a plan solution."
+    "ToPlanSolution[node_DRNode, dfsSolution_DFSSolution] turns a DFS solution for the root node to a plan solution."
 ]
 
 
@@ -86,8 +86,8 @@ ConfigLoad[path_String, rootSym_Symbol] := Block[
 
 
 (* Extends DRPLAN`Solver`ToPlanSolution *)
-ToPlanSolution[DFSSolution[nodeSolution_NodeSolution, _]] :=
-    ToPlanSolution[nodeSolution]
+ToPlanSolution[node_DRNode, DFSSolution[nodeSolution_NodeSolution, _]] :=
+    ToPlanSolution[node, nodeSolution]
 
 
 Options[DFSSolvingStart] = {
