@@ -1128,7 +1128,7 @@ findZeros[interp_InterpolatingFunction, samplelist:{{_?NumericQ, _?NumericQ}..}]
                 {i, 0, Length[controlpoints] - 1}
             ]];
             polyform = PiecewiseExpand[Piecewise[{{polyform,(Or@@((#[[1]] <= t <= #[[2]])&/@zerodomain))}},1]];
-            zeros = Flatten[Solve[polyform == 0, Reals]];
+            zeros = Flatten[Solve[polyform == 0, {t}, Reals]];
             (t/.#&) /@ zeros
         )
     }]
