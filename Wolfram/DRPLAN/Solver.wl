@@ -337,7 +337,8 @@ Options[SolveNode] = {
     "Reevaluate" -> False,
     "AllCFlip" -> False,
     "SowSampleList" -> False,
-    "Parallelize" -> False
+    "Parallelize" -> False,
+    "Overflip" -> False
 }
 
 SolveNode::invtdf = "Invalid D-flip specified: `1`."
@@ -354,11 +355,11 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
         nodeI, solutions,
         (* options *)
         reevaluate, allCFlip, sowSampleList, parallelize,
-        subReevaluate
+        subReevaluate, overflip
     },
 
-    {reevaluate, allCFlip, sowSampleList, parallelize} =
-        OptionValue[SolveNode, {o}, {"Reevaluate", "AllCFlip", "SowSampleList", "Parallelize"}];
+    {reevaluate, allCFlip, sowSampleList, parallelize, overflip} =
+        OptionValue[SolveNode, {o}, {"Reevaluate", "AllCFlip", "SowSampleList", "Parallelize", "Overflip"}];
 
     (* Print["Solving " <> ToString[node]]; *)
     If[node["IsCayleyNode"],
@@ -370,7 +371,12 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
         UnEcho[#, "nodeSolutions", (ToString/@#)&]& @ {
             NodeSolution[
                 <|node["TargetCayley"] -> ((node["FreeCayley"] // Map[Key]) /* Through /* First)|>, (* identity function *)
-                <|node["TargetCayley"] -> node["Interval"]|>, (* domain *)
+                <|node["TargetCayley"] -> node["Interval"] + If[overflip, (
+                    node["Interval"]
+                    // RegionMeasure
+                    // (# * $BoundaryRatio)&
+                    // Interval[{-#, #}]&
+                ), 0]|>, (* domain *)
                 {1}, (* D-flip index *)
                 <||> (* overwriting the C-flip*)
             ],
@@ -420,13 +426,15 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
         nodeSolutions = mergeNodeSolution @@ MapThread[SolveNode[#1, #2,
             "Reevaluate" -> subReevaluate,
             "AllCFlip" -> allCFlip,
-            "Parallelize" -> parallelize
+            "Parallelize" -> parallelize,
+            "Overflip" -> overflip
         ]&, {node["SubNodes"], subDFlips}];
 
         (* Prepare Immutable data for parallelism*)
         nodeI = PersistDRNode[node];
 
         $SowSampleList = sowSampleList;
+        $Overflip = overflip;
 
         (* Solve a flip *)
         {solutions, $sampleLists} = If[parallelize,
@@ -533,6 +541,8 @@ calcCoords::nosol = "The graph is not realizable."
 calcCoords::negdel = "The determinant `1` is negative at vertex `2` with cayleylength `3`."
 calcCoords::ntwotr = "The graph is not a two tree because there are more than two base vertices `2` connected to `1`."
 calcCoords::nttedge = "The edge `1` is has \"EdgeType\" `2` which is not included in the two-tree."
+calcCoords::cnof = "Cannot over flip edge `1` at length `2` since it is outside `3`."
+calcCoords::wrdlen = "Weird length for triangle with edges `1`(`2`), `3`(`4`), `5`(`6`)."
 calcCoords[node_DRNode, cayleyLength_Association, flipVector_List] := Block[
     {
         vertices = VertexList[node["Graph"]], v1, v2
@@ -565,7 +575,7 @@ calcCoordsImpl[rootgraph_Graph, cayleyLength_Association, flipVector_List][
         (* difference between coordinates *) dx, dy, dd,
         (* middle point of edges *) mx, my, md,
         (* determinant of quadratic equation *) delta,
-        sign
+        sign, overflip = False, cayleyTrig = False
     },
 
     If[Length[coordsList] < 2, Return[{{(* stop recursion *)}, coordsList}]];
@@ -588,8 +598,25 @@ calcCoordsImpl[rootgraph_Graph, cayleyLength_Association, flipVector_List][
     {d0, d1, d2} = Table[
         PropertyValue[{rootgraph, e}, "EdgeType"]
         // Replace[{
-            "Add" :> cayleyLength[EdgeIndex[rootgraph, e]],
-            "Partial" :> PropertyValue[{rootgraph, e}, EdgeWeight],
+            "Add" :> With[
+                {
+                    sampleLength = cayleyLength[EdgeIndex[rootgraph, e]],
+                    interval = AnnotationValue[{rootgraph, e}, "Interval"]
+                },
+           cayleyTrig = True;
+                If[sampleLength // IntervalMemberQ[interval],
+                   sampleLength,
+                    If[sampleLength > interval,
+                        2 * Max[interval] - sampleLength,
+                        2 * Min[interval] - sampleLength
+                    ]
+                    // Replace[Except[_?(IntervalMemberQ[interval])] :> (
+                        Message[calcCoords::cnof, e, sampleLength, interval];
+                        Abort[]
+                    )]
+                ] // {sampleLength, #}&
+            ],
+            "Partial" :> (PropertyValue[{rootgraph, e}, EdgeWeight] // {#, #}&),
             err_ :> (Message[calcCoords::nttedge, e, err]; Abort[])
         }],
         {e, {v1 <-> v2, v0 <-> v1, v0 <-> v2}}
@@ -599,7 +626,11 @@ calcCoordsImpl[rootgraph_Graph, cayleyLength_Association, flipVector_List][
     {mx, my} = (c1 + c2) / 2;
     dd = d1 - d2;
     md = (d1 + d2) / 2;
-    delta = Max[(Chop[(d0 - dd) * (md - d0 / 2)] * (d0 + dd) * (md + d0 / 2)), 0]
+
+    overflip = (Part[{d0 - dd, md - d0 / 2, d0 + dd}, All, 1] // MemberQ[_?Negative]) && cayleyTrig;
+    {d0, d1, d2, dd, md} = Part[$t={d0, d1, d2, dd, md}, All, -1];
+
+    delta = Max[(Chop[(d0 - dd) * (md - d0 / 2) * (d0 + dd)] * (md + d0 / 2)), 0]
     // Replace[err:Except[_?NumericQ] :> (
         Print["delta: ", err, {d1, d2}, cayleyLength];
         Abort[]
@@ -616,12 +647,12 @@ calcCoordsImpl[rootgraph_Graph, cayleyLength_Association, flipVector_List][
         (* Return["Unrealizable"]; *)
         {{(* stop recursion *)}, coordsList},
 
-        sign = If[MemberQ[flipVector, v0], 1, -1];
+        sign = If[Xor[MemberQ[flipVector, v0], overflip], 1, -1];
         {
             {restVertices},
             Append[
                 coordsList,
-                v0 -> Replace[(- dd * md * {dx, dy} + {-1, 1} * sign * {dy, dx} * Sqrt[delta]) / d0^2 + {mx, my},
+                v0 -> Replace[(- dd * md * {dx, dy} + {-1, 1} * sign * {dy, dx} * Sqrt[delta]) / d0^2 + {mx, my}, {
                     err:Except[{_?NumericQ, _?NumericQ}] :> (
                         Echo[d0, "d0"];
                         Echo[dd, "dd"];
@@ -630,8 +661,17 @@ calcCoordsImpl[rootgraph_Graph, cayleyLength_Association, flipVector_List][
                         Echo[err, "Coordinates"];
                         Echo[coordsList];
                         Abort[]
+                    ),
+                    err_ /; (EuclideanDistance[err, c1] != d1 || EuclideanDistance[err, c2] != d2) :> (
+                        Echo[d0, "d0"];
+                        Echo[dd, "dd"];
+                        Echo[md, "md"];
+                        Echo[{v0, v1, v2}, "Vertices"];
+                        Echo[err, "Coordinates"];
+                        Echo[coordsList];
+                        Abort[]
                     )
-                ]
+                }]
             ]
         }
 

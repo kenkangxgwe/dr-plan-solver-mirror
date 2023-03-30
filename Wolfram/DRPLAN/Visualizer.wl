@@ -316,7 +316,8 @@ AnalyzeSolution[node_DRNode, planSolution_PlanSolution, o:OptionsPattern[]] := M
     Grid[{{
         If[withGraph, Grid[{
             {Graph[resultGraph, Options[originGraph, EdgeStyle], ImageSize -> 400], SpanFromLeft},
-            {Style["Flip Vector: ", Bold], Part[planSolution, 2]},
+            {Style["Actual Flip Vector: ", Bold], GetFlipVector[resultGraph]},
+            {Style["Expected Flip Vector: ", Bold], Part[planSolution, 2]},
             {"D-Flips: ", Pane[Part[planSolution, 3], 300]},
             {Style["Abs Error: ", Bold], Row[With[
                 {
