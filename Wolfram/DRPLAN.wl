@@ -118,7 +118,7 @@ GenerateDRPlan[node_DRNode] := Module[
         (* is a cayley node *)
         soleEdge = First[EdgeList[node["Graph"]]];
         node["AllCayley"] = node["FreeCayley"] = {node["TargetCayley"]} = {EdgeIndex[node["Root"]["Graph"], soleEdge]};
-        node["Interval"] = (Interval[{Min[#] + DRPLAN["EPSILON"], Max[#] - DRPLAN["EPSILON"]}]&) @ PropertyValue[{node["Root"]["Graph"], soleEdge}, "Interval"];
+        node["Interval"] = (TightInterval[{Min[#] + DRPLAN["EPSILON"], Max[#] - DRPLAN["EPSILON"]}]&) @ PropertyValue[{node["Root"]["Graph"], soleEdge}, "Interval"];
         node["EdgeRules"] = {},
         (* not a cayley node *)
         {freeCayley, subNodes} = GenerateDRNode[node];
@@ -225,7 +225,7 @@ calcInterval[node_DRNode] := Module[
     maxs = Association[
         (# -> -LinearProgramming[SparseArray[{#} -> -1, addNum], m, List @@@ b, List @@@ lu].SparseArray[{#} -> -1, addNum])& /@ Range[addNum]
     ];
-    (PropertyValue[{graph, EdgeList[graph][[#]]}, "Interval"] = Interval[{mins[edgeToCol[#]], maxs[edgeToCol[#]]}])& /@ Keys[edgeToCol];
+    (PropertyValue[{graph, EdgeList[graph][[#]]}, "Interval"] = TightInterval[{mins[edgeToCol[#]], maxs[edgeToCol[#]]}])& /@ Keys[edgeToCol];
 	  node["Graph"] =  graph;
 	  node
 ];
@@ -294,7 +294,7 @@ Switch[Table[PropertyValue[{graph, e}, "EdgeType"], {e, {e1, e2}}],
     {
         {},
         {},
-        <|edgeToCol[EdgeIndex[graph, e0]] -> Interval[{
+        <|edgeToCol[EdgeIndex[graph, e0]] -> TightInterval[{
             Abs[PropertyValue[{graph, e1}, EdgeWeight] - PropertyValue[{graph, e2}, EdgeWeight]],
             PropertyValue[{graph, e1}, EdgeWeight] + PropertyValue[{graph, e2}, EdgeWeight]
         }]|>

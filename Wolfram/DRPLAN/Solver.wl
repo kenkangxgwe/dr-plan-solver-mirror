@@ -51,7 +51,8 @@ PrintEcho = ((Print[#1];#1)&)
 
 InterpolatingFunctionGroup /: MakeBoxes[group:InterpolatingFunctionGroup[ifs__InterpolatingFunction], StandardForm] :=
     BoxForm`ArrangeSummaryBox[InterpolatingFunctionGroup, sol, (*icon=*)None, {
-        BoxForm`SummaryItem[{"InterpolatingFunctions: ", Column@{ifs}}]
+        BoxForm`SummaryItem[{"InterpolatingFunctions: ", Column@{ifs}}],
+        BoxForm`SummaryItem[{"Domain: ", group["Domain"]}]
     }, {}, StandardForm, "Interpretable" -> Automatic]
 
 
@@ -369,9 +370,8 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
                 <|node["TargetCayley"] -> ((node["FreeCayley"] // Map[Key]) /* Through /* First)|>, (* identity function *)
                 <|node["TargetCayley"] -> node["Interval"] + If[overflip, (
                     node["Interval"]
-                    // RegionMeasure
-                    // (# * $BoundaryRatio)&
-                    // Interval[{-#, #}]&
+                    // Apply[EuclideanDistance]
+                    // (# * $BoundaryRatio * {-1, 1})&
                 ), 0]|>, (* domain *)
                 {1}, (* D-flip index *)
                 <||> (* overwriting the C-flip*)
@@ -435,7 +435,7 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
             ParallelTable[
                 Reap[SolveDFlip[nodeI, nodeSolution, FilterRules[{o}, Options[SolveDFlip]]]],
                 {nodeSolution, nodeSolutions},
-                DistributedContexts -> {"DRPLAN`Core`", "DRPLAN`Solver`", "DRPLAN`Thread`", "DataType`"},
+                DistributedContexts -> {"DRPLAN`Core`", "DRPLAN`Solver`", "DRPLAN`Utility`", "DRPLAN`Thread`", "DataType`"},
                 Method -> "FinestGrained"
             ],
             Table[
@@ -514,7 +514,7 @@ mergeNodeSolution[nodeSolutions__NodeSolution] := With[
         Part[nodeSolutionList, All, 1]
         // Merge[First],
         Part[nodeSolutionList, All, 2]
-        // Merge[Apply[IntervalIntersection]],
+        // Merge[Apply[RangeIntersection]],
         Part[nodeSolutionList, All, 3]
         // Prepend[Missing["DFlipNotSolved"]],
         Part[nodeSolutionList, All, 4]
@@ -598,13 +598,13 @@ calcCoordsImpl[rootgraph_Graph, cayleyLength_Association, flipVector_List][
                     interval = AnnotationValue[{rootgraph, e}, "Interval"]
                 },
            cayleyTrig = True;
-                If[sampleLength // IntervalMemberQ[interval],
-                   sampleLength,
-                    If[sampleLength > interval,
+                If[sampleLength // Between[interval],
+                    sampleLength,
+                    If[sampleLength > Max[interval],
                         2 * Max[interval] - sampleLength,
                         2 * Min[interval] - sampleLength
                     ]
-                    // Replace[Except[_?(IntervalMemberQ[interval])] :> (
+                    // Replace[Except[_?(Between[interval])] :> (
                         Echo[{v0, v1, v2}, "Vertices"];
                         Echo[flipVector, "FlipVector"];
                         Echo[cayleyLength, "CaleyLength"];
@@ -732,20 +732,14 @@ $ZeroRatio = 0.01
 
 
 (* return a list of sample indices from 0 to $SampleDivisor *)
-getSamples[interval_Interval, planShortestEdge_?NumericQ] := Module[
+getSamples[{left_, right_}, planShortestEdge_?NumericQ] := Module[
     {
-        left, right,
         sampleNum,
         sampleIndices
     },
 
-    {left, right} = MinMax[interval];
-
     (* The wider the interval is, the more samples we take. *)
-    sampleNum = If[right - left > planShortestEdge,
-        Ceiling[(right - left) / planShortestEdge * $SampleNum],
-        $SampleNum
-    ];
+    sampleNum = Max[Ceiling[(right - left) / planShortestEdge * $SampleNum], $SampleNum];
 
     sampleIndices = If[$RefineSampling,
         Join[
@@ -773,13 +767,13 @@ getSamples[interval_Interval, planShortestEdge_?NumericQ] := Module[
 (*refineInterval*)
 
 
-refineInterval[node_DRNode, TargetCayley_, cayleyLength_Association] := Module[
+refineInterval[node_DRNode, targetCayley_, cayleyLength_Association] := Module[
     {
         graph = node["Graph"], rootgraph = node["Root"]["Graph"], targetedge,
         v1, v2, commonvertex, d1, d2
     },
 
-    targetedge = EdgeList[rootgraph][[TargetCayley]];
+    targetedge = EdgeList[rootgraph][[targetCayley]];
     {v1, v2} = List @@ targetedge;
 
     commonvertex = Min[AdjacencyList[graph, v1] ~Intersection~ AdjacencyList[graph, v2]];
@@ -790,7 +784,7 @@ refineInterval[node_DRNode, TargetCayley_, cayleyLength_Association] := Module[
         ]
     ] /@ {UndirectedEdge[commonvertex, v1], UndirectedEdge[commonvertex, v2]};
 
-    Interval[{Max[Abs[d1 - d2], $MachineEpsilon (* to avoid degeneracy *)], d1 + d2}]
+    {Abs[d1 - d2], d1 + d2}
 ]
 
 
@@ -802,10 +796,12 @@ Options[SolveDFlip] = {
     "Method" -> "UniformSampling" (* "KdTree" *)
 }
 
-SolveDFlip[args__, o:OptionsPattern[]] := If[OptionValue["Method"] == "UniformSampling",
-    UniformSampling[args],
-    KdTreeSampling[args]
-]
+SolveDFlip[args__, o:OptionsPattern[]] := (
+    If[OptionValue["Method"] == "UniformSampling",
+        UniformSampling[args],
+        KdTreeSampling[args]
+    ]
+)
 
 
 realizeNode[node_DRNode, solution_Association, tFlip_Association, sample_Association] := With[
@@ -843,8 +839,8 @@ interpZeros[node_DRNode, nodeSolution_NodeSolution, samples_, sampleList:{(_?Num
                 _ :>  AlternativeInterpolation[interpList]
             }], {interpList, BlockMap[Take[Replace[samplePoints, InterpolationPiece[p_] :> p, {2}], #]&, splitPos, 2 ,1]}
         ]
-        // Apply[InterpolatingFunctionGroup]
-        // Replace[InterpolatingFunctionGroup[] :> Return[{}]],
+        // Replace[{} :> Return[{}]]
+        // Apply[InterpolatingFunctionGroup],
         (* the last Cayley C1 *)
         Function[{const}, (const &)] @@ sampleList
     ];
@@ -874,8 +870,8 @@ AlternativeInterpolation[list_List] := Module[
     last = Last[list];
     {midOdd, midEven} = Part[GatherBy[Partition[Riffle[Most[Rest[list]], {"Odd", "Even"}], 2], Last], All, All, 1];
 
-    interpOdd = Interpolation[Join[{first}, midOdd, {last}], InterpolationOrder -> 3, Method -> "Hermite"];
-    interpEven = Interpolation[Join[{first}, midEven, {last}], InterpolationOrder -> 3, Method -> "Hermite"];
+        interpOdd = Interpolation[Join[{first}, midOdd, {last}], InterpolationOrder -> 3, Method -> "Hermite"];
+        interpEven = Interpolation[Join[{first}, midEven, {last}], InterpolationOrder -> 3, Method -> "Hermite"];
 
     InterpolatingFunctionGroup[interpOdd, interpEven]
 
@@ -883,19 +879,19 @@ AlternativeInterpolation[list_List] := Module[
 
 
 SetAttributes[InterpolatingFunctionGroup, Flat]
+InterpolatingFunctionGroup::outdom = "The input `1` is of out the domain of the interpolating functions `2`. Indterminate will be returned."
 InterpolatingFunctionGroup[ifs__InterpolatingFunction][x:(_?NumericQ | {__?NumericQ})] := (
     Table[
         Quiet[Check[if[x], Nothing, {InterpolatingFunction::dmval}], {InterpolatingFunction::dmval}],
         {if, {ifs}}
     ] // Replace[{} :> {
-        Echo["Indeterminate"];
-        Echo[{ifs}, "ifs"];
-        Echo[x, "x"];
+        Message[InterpolatingFunctionGroup::outdom, x, {ifs}];
         Indeterminate
     }] // Mean
 )
 InterpolatingFunctionGroup[ifs__InterpolatingFunction]["Domain"] := (
-    Interval @@@ Transpose[Through[{ifs}["Domain"]]]
+    Transpose[Through[{ifs}["Domain"]]]
+    // Map[Apply[RangeUnion]]
 )
 
 
@@ -919,15 +915,15 @@ UniformSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1]
 
     (* generate sample points for free cayleys *)
     {sampleNum, firstSamples} = If[node["FreeCayley"] =!= {},
-        (* only handles flex-1 case*)
-        Values[
-            KeyTake[domain, First[node["FreeCayley"]]]
-            // Map[getSamples[#, node["Root"]["PlanShortestEdge"]]&]
-        ] // First,
+        (* only handles flex-1 case *)
+        KeyTake[domain, First[node["FreeCayley"]]]
+        // Map[getSamples[#, node["Root"]["PlanShortestEdge"]]&]
+        // First,
         Echo["Last Cayley"];
         (* $on = True; *)
         {0, <||>}
     ];
+    (* Echo["Generated " <> ToString[sampleNum] <> " samples for " <> ToString[node["FreeCayley"]]]; *)
 
     (* $on = False; *)
     (* If[$on, Echo[firstSamples]]; *)
@@ -995,7 +991,7 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
     tFlip = Part[nodeSolution, 4];
 
     (* refine the domain use triangle inequalities *)
-    refinedDomain = (*t`$rd =*) IntervalIntersection[
+    refinedDomain = (*t`$rd =*) RangeIntersection[
         domain[node["TargetCayley"]],
         refineInterval[node, node["TargetCayley"],
             (* we require the target cayley parameter not appears in its prior vertices' solutions *)
@@ -1003,7 +999,9 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
         ]
     ];
     (* If[Head[refinedDomain] =!= Interval, Echo[t`rd]]; *)
-    If[(Max[#] - Min[#]&)[refinedDomain] <= ($MachineEpsilon * $SampleDivisor), Echo[freeSample,"Empty Refined Interval"]; Return[{}]];
+    If[(Max[#] - Min[#]&)[refinedDomain] <= ($MachineEpsilon * $SampleDivisor),
+        Echo[freeSample,"Empty Refined Interval"]; Return[{}]
+    ];
 
     {sampleNum, targetSamples} = getSamples[refinedDomain, node["Root"]["PlanShortestEdge"]];
     sampleList = (Replace[targetSample:Except[_Missing] :> (
@@ -1146,7 +1144,7 @@ findApproxIntervals[samplePoints_SparseArray, threshold_?NumericQ] := Module[
 ]
 
 
-findNearZerosIntervals[zeroTuples_SparseArray, domain_Interval, threshold_?NumericQ] := Module[
+findNearZerosIntervals[zeroTuples_SparseArray, {min_, max_}, threshold_?NumericQ] := Module[
     {
         booleanList, seqPos
     },
@@ -1158,9 +1156,9 @@ findNearZerosIntervals[zeroTuples_SparseArray, domain_Interval, threshold_?Numer
         // Replace[{
             {} :> False,
             _List :> (
-                Join[{Min[domain]}, Part[zeroTuple, All, 1], {Max[domain]}]
+                Join[{min}, Part[zeroTuple, All, 1], {max}]
                 // Differences
-                // Select[LessEqualThan[threshold * RegionMeasure[domain]]]
+                // Select[LessEqualThan[threshold * (max - min)]]
                 // Length // Replace[{
                     0 :> False,
                     _ :> True
@@ -1260,11 +1258,11 @@ getApproxZerosImpl[sampleList_, toleranceRatio_][{{trueZeros:{__}, intervals:{__
 
     firstZero = First[trueZeros];
     firstInterval = Replace[intervals, {
-        {interval:{_Integer, _Integer}, ___} :> Interval[Normal[Part[sampleList, interval, 1]]],
-        {Infinity} :> Interval[{Infinity, Infinity}]
+        {interval:{_Integer, _Integer}, ___} :> Normal[Part[sampleList, interval, 1]],
+        {Infinity} :> {Infinity, Infinity}
     }];
     Which[
-        TrueQ[firstZero < firstInterval],
+        TrueQ[firstZero < Min[firstInterval]],
         {
             {Rest[trueZeros], intervals},
             If[Length[umMinima] > 0 && firstZero < Part[sampleList, Last[umMinima], 1] + tolerance,
@@ -1273,7 +1271,7 @@ getApproxZerosImpl[sampleList_, toleranceRatio_][{{trueZeros:{__}, intervals:{__
                 {Append[umZeros, firstZero], umMinima}
             ]
         },
-        TrueQ[firstZero > firstInterval],
+        TrueQ[firstZero > Max[firstInterval]],
         {
             {trueZeros, Rest[intervals]},
             firstMinima = Take[sampleList, First[intervals]]
@@ -1335,10 +1333,6 @@ getBoundaryApproxZeros[sampleList_SparseArray, zeroIntervals:{__}] := (
 (*KdTree Sampling*)
 
 
-$KdSamplingDivider = 15
-$KdDenseDivider = 3
-
-
 calcSamplePoint[node_DRNode, solution_Association, tFlip_Association,
     (*sample:*)Point[{freeCayley_?NumericQ, targetCayley_?NumericQ, _}]] := (
     realizeNode[node, solution, tFlip, <|
@@ -1361,6 +1355,10 @@ calcSamplePoint[node_DRNode, solution_Association, tFlip_Association,
 )
 
 
+$KdSamplingDivider = 15
+$KdDenseDivider = 3
+
+
 (* Only supports 2d tree (flex-1 case) for now. *)
 KdTreeSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := Block[
     {
@@ -1372,17 +1370,22 @@ KdTreeSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] 
     tFlip = Part[nodeSolution, 4];
     freeDomain = If[node["FreeCayley"] =!= {},
         (* only handles flex-1 case *)
-        domain // KeyTake[First[node["FreeCayley"]]] // First // Echo,
-        Echo["Last Cayley"];
-        Interval[{0, 0}]
+        domain
+        // KeyTake[First[node["FreeCayley"]]]
+        // First,
+        (* Echo["Last Cayley"]; *)
+        {0, 0}
     ];
     targetDomain = domain[node["TargetCayley"]];
     {freeDomain, targetDomain}
-    // Map[MinMax]
     // Apply[Outer[List/*Point, ##, {Missing["NotSolved"]}]&]
     // Flatten
     // Map[calcSamplePoint[node, solution, tFlip, #]&]
-    // QuadSampling[node, solution, tFlip, node["Root"]["PlanShortestEdge"] / $KdSamplingDivider]
+    // QuadSampling[node, solution, tFlip,
+        node["Root"]["PlanShortestEdge"] / $KdSamplingDivider,
+        EuclideanDistance@@freeDomain / $KdSamplingDivider,
+        EuclideanDistance@@targetDomain / $KdSamplingDivider
+    ]
     // Map[FinalizeSol]
     // MapIndexed[interpZeros[node, nodeSolution, Part[#1, All, 1], Part[#1, All, 2], First[#2]]&]
 ]
@@ -1398,7 +1401,8 @@ KdTreeSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] 
     ft -- ct -- Ft
       freeCayley
 *)
-(quadSampling:QuadSampling[node_DRNode, solution_Association, tFlip_Association, distanceTolerance_?NumericQ])[
+(quadSampling:QuadSampling[node_DRNode, solution_Association, tFlip_Association,
+    dropDiffTolerance_?NumericQ, freeDistanceTolerance_?NumericQ, targetDistanceTolerance_?NumericQ])[
     {ft_Point, fT_Point, Ft_Point, FT_Point}] := Block[
     {
         splitt, splitf, splitT, splitF,
@@ -1417,7 +1421,9 @@ KdTreeSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] 
                     1
                 ]
             },
-            EuclideanDistance[First[#1], First[#2]] > (distanceTolerance / denseDivider)
+            EuclideanDistance[Part[#1, UnwrapPoint, 1], Part[#2, UnwrapPoint, 1]] > (freeDistanceTolerance / denseDivider) ||
+            EuclideanDistance[Part[#1, UnwrapPoint, 2], Part[#2, UnwrapPoint, 2]] > (targetDistanceTolerance / denseDivider) ||
+            EuclideanDistance[Part[#1, UnwrapPoint, 3], Part[#2, UnwrapPoint, 3]] > (dropDiffTolerance / denseDivider)
         ]&]]
     );
 
@@ -1473,22 +1479,22 @@ findZeroBoundaries[node_DRNode, solution_Association, tFlip_Association,
                 If[ftD * fTD <= 0, {
                     Left,
                     Part[ft, UnwrapPoint, 1],
-                    Part[{ft, fT}, All, UnwrapPoint, 2] // Interval
+                    Part[{ft, fT}, All, UnwrapPoint, 2]
                 } , Nothing],
                 If[ftD * FtD <= 0, {
                     Bottom,
                     Part[ft, UnwrapPoint, 2],
-                    Part[{ft, Ft}, All, UnwrapPoint, 1] // Interval
+                    Part[{ft, Ft}, All, UnwrapPoint, 1]
                 }, Nothing],
                 If[fTD * FTD <= 0, {
                     Top,
                     Part[FT, UnwrapPoint, 2],
-                    Part[{fT, FT}, All, UnwrapPoint, 1] // Interval
+                    Part[{fT, FT}, All, UnwrapPoint, 1]
                 }, Nothing],
                 If[FtD * FTD <= 0, {
                     Right,
                     Part[FT, UnwrapPoint, 1],
-                    Part[{Ft, FT}, All, UnwrapPoint, 2] // Interval
+                    Part[{Ft, FT}, All, UnwrapPoint, 2]
                 }, Nothing]
             }
         ]
@@ -1513,14 +1519,14 @@ findZeroBoundaries[node_DRNode, solution_Association, tFlip_Association,
                 Identity
             ]
             // Apply[{<|"In" -> #1, "Out" -> #2, "InternalPoints" -> {}|>}&]
-        ]]
+        )]
 )
 
 
 findZeros::noncubic = "Cannot find zeros using cubic fitting for `1`, trying linear"
 findZeros::nozeros = "No zeros found for `1`"
 findZeros[node_DRNode, solution_Association, tFlip_Association,
-    side:(Left|Bottom|Top|Right), fixedCayley_?NumericQ, runningInterval_Interval
+    side:(Left|Bottom|Top|Right), fixedCayley_?NumericQ, {min_, max_}
 ] := Block[
     {
         goalFunction = (
@@ -1545,9 +1551,7 @@ findZeros[node_DRNode, solution_Association, tFlip_Association,
     },
 
     (* Finds a zero point of goal function using cubic fitting *)
-    runningInterval
-    // MinMax
-    // Apply[Subdivide[##, 3]&]
+    Subdivide[min, max, 3]
     // {
         Identity,
         Map[goalFunction]
@@ -1562,12 +1566,12 @@ findZeros[node_DRNode, solution_Association, tFlip_Association,
             sol
             /; (
                 Check[LinearModelFit[samples, x ^ Range[3], x], Echo[samples]; Abort[]]&
-                // NSolve[#["BestFit"] == 0 && Element[{x}, runningInterval], {x}, Reals]&
+                // NSolve[#["BestFit"] == 0 && min <= x <= max, {x}, Reals]&
                 // Map[x/.#&]
                 // MinimalBy[goalFunction]
                 // Replace[{
                     {root_} :> (sol = root; True),
-                    {} :> (Message[findZeros::noncubic, {side, fixedCayley, runningInterval}]; False)
+                    {} :> (Message[findZeros::noncubic, {side, fixedCayley, {min, max}}]; False)
                 }]
             )
         ],
@@ -1575,8 +1579,8 @@ findZeros[node_DRNode, solution_Association, tFlip_Association,
             (* linear fit *)
             (x2 * y1 - x1 * y2) / (y1 - y2)
             // Replace[{
-                Except[_?(IntervalMemberQ[runningInterval])] :> (
-                    Message[findZeros::nozeros, {side, fixedCayley, runningInterval}];
+                Except[_?(Between[{min, max}])] :> (
+                    Message[findZeros::nozeros, {side, fixedCayley, {min, max}}];
                     Abort[]
                 )
             }]
@@ -1688,9 +1692,9 @@ matchIntervals[{}, {{_, secondIndex_, matched_:False}, rest___}] := (
 )
 matchIntervals[first:{{firstInterval_, firstIndex_, firstMatched_:False}, ___},
     second:{{secondInterval_, secondIndex_, secondMatched_:False}, ___}] := (
-    IntervalIntersection[firstInterval, secondInterval]
+    RangeIntersection[firstInterval, secondInterval]
     // Replace[{
-        Interval[] :> If[Max[firstInterval] < Max[secondInterval],
+        {Infinity, -Infinity} :> If[Max[firstInterval] < Max[secondInterval],
             If[Not[firstMatched],
                 Sow[{1, {firstIndex, {}}}]
             ];
@@ -1703,7 +1707,7 @@ matchIntervals[first:{{firstInterval_, firstIndex_, firstMatched_:False}, ___},
         _ :> (
             Sow[{
                 If[{firstInterval, secondInterval}
-                    // Map[RegionMeasure]
+                    // Map[(Max[#] - Min[#])&]
                     // Apply[Less],
                     1,2
                 ],
@@ -1798,13 +1802,13 @@ mergeSols[index_, {outSol_Association, inSol_Association}] := (
 
 
 FinalizeSol[KeyValuePattern[{
-        "In" -> in_,
-        "Out" -> out_,
+        "In" -> {inDirection_, inPoint_, _},
+        "Out" -> {outDirection_, outPoint_, _},
         "InternalPoints" -> sol_
     }]] := Join[
-    If[First[in] === Center, {}, Part[in, {2}]],
+    If[inDirection === Center, {}, {inPoint}],
     sol,
-    If[First[out] === Center, {}, Part[out, {2}]]
+    If[outDirection === Center, {}, {outPoint}]
 ]
 
 End[]

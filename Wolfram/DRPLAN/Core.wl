@@ -46,18 +46,11 @@ ModifyBoundaries::usage = "ModifyBoundaries[node_DRNode, modifier_] modifies the
 Begin["`Private`"]
 ClearAll[Evaluate[Context[] <> "*"]]
 Needs["GraphvizUtils`"]
+Needs["DRPLAN`Utility`"]
 
 
 (* ::Chapter:: *)
 (*DRNode*)
-
-
-(* ::Section:: *)
-(*Constants*)
-
-
-(* Some constants are declared here. *)
-$Epsilon = 0; 2 * 10^(-5)
 
 
 (* ::Section:: *)
@@ -214,7 +207,7 @@ GenerateDRPlan[node_DRNode] := Module[
         node["IsCayleyNode"] = True;
         cayleyEdge = First[EdgeList[node["Graph"]]];
         node["AllCayley"] = node["FreeCayley"] = {node["TargetCayley"]} = {EdgeIndex[node["Root"]["Graph"], cayleyEdge]};
-        node["Interval"] = (Interval[{Min[#] + $Epsilon, Max[#] - $Epsilon}]&) @ PropertyValue[{node["Root"]["Graph"], cayleyEdge}, "Interval"];
+        node["Interval"] = PropertyValue[{node["Root"]["Graph"], cayleyEdge}, "Interval"];
         (* rules for the DR-plan *)
         node["PlanRules"] = {},
 
@@ -364,7 +357,7 @@ calcInterval[node_DRNode] := Module[
     m = Normal /@ m;
     b = List @@@ b;
     lu = lu
-         // Merge[(IntervalIntersection @@ #&)]
+         // Merge[(RangeIntersection @@ #&)]
          // KeyValueMap[({{#1, 1} -> Min[#2], {#1, 2} -> Max[#2]}&)]
          // Flatten
          // (SparseArray[# ~Join~ {{_, 1} -> -Infinity, {_,2} -> Infinity}, {addNum, 2}]&);
@@ -379,7 +372,7 @@ calcInterval[node_DRNode] := Module[
     (* update interval for every edge *)
     Table[
         With[{col = edgeToCol[edge]},
-            PropertyValue[{graph, EdgeList[graph][[edge]]}, "Interval"] = Interval[{mins[col], maxs[col]}]
+            PropertyValue[{graph, EdgeList[graph][[edge]]}, "Interval"] = {mins[col], maxs[col]}
         ],
         {edge, Keys[edgeToCol]}
     ];
@@ -451,10 +444,10 @@ Switch[Table[PropertyValue[{graph, e}, "EdgeType"], {e, {e1, e2}}],
     {
         {},
         {},
-        <|edgeToCol[EdgeIndex[graph, e0]] -> Interval[{
+        <|edgeToCol[EdgeIndex[graph, e0]] -> {
             Abs[PropertyValue[{graph, e1}, EdgeWeight] - PropertyValue[{graph, e2}, EdgeWeight]],
             PropertyValue[{graph, e1}, EdgeWeight] + PropertyValue[{graph, e2}, EdgeWeight]
-        }]|>
+        }|>
     }
 ]
 

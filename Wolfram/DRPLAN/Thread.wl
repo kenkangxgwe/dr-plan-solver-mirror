@@ -100,7 +100,7 @@ threadLine[state_Association, step_] := With[
     Returns the last thread indices to use for the next threads.
  *)
 threadStep::strcase = "Strange `1` case happens at index `2`: `3`."
-threadStep[firstPair_, secondPair_, index_Integer, domain_Interval] := With[
+threadStep[firstPair_, secondPair_, index_Integer, {min_, max_}] := With[
     {
         firstSigns = Part[firstPair, All, 2] // Sign,
         secondSigns = Part[secondPair, All, 2] // Sign
@@ -379,10 +379,10 @@ threadStep[firstPair_, secondPair_, index_Integer, domain_Interval] := With[
                     Message[threadStep::strcase, "2-1", index, "The first tuple" <> ToString[Part[{firstPair, secondPair}, All, 1, 1]] <> " is further than the second point " <> Part[firstPair, -1, 1] <> ", if 1-1"];
                     {0},
                     (* 1-1 *)
-                    If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, 1, 1]] > EuclideanDistance[Part[firstPair, 1, 1], Min[domain]],
+                    If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, 1, 1]] > EuclideanDistance[Part[firstPair, 1, 1], min],
                         Message[threadStep::strcase, "2-1", index, "The first tuple" <> ToString[Part[{firstPair, secondPair}, All, 1]] <> " is further than one of them to the boudary " <> ToString[domain] <> ", if 1-1"]
                     ];
-                    If[EuclideanDistance[Part[firstPair, -1, 1], Part[secondPair, 1, 1]] < EuclideanDistance[Part[firstPair, -1, 1], Max[domain]] &&
+                    If[EuclideanDistance[Part[firstPair, -1, 1], Part[secondPair, 1, 1]] < EuclideanDistance[Part[firstPair, -1, 1], max] &&
                         Part[firstPair, 1, 1] < Part[secondPair, 1, 1] < Part[firstPair, -1, 1],
                         (* 2-1 *)
                         {{1, 2}},
@@ -395,10 +395,10 @@ threadStep[firstPair_, secondPair_, index_Integer, domain_Interval] := With[
                     Message[threadStep::strcase, "2-1", index, "The last tuple" <> ToString[Part[{firstPair, secondPair}, All, -1, 1]] <> " is further than the first point " <> Part[firstPair, 1, 1] <> ", if 2-1"];
                     {0},
                     (* 2-1 *)
-                    If[EuclideanDistance[Part[firstPair, -1, 1], Part[secondPair, 1, 1]] > EuclideanDistance[Part[firstPair, -1, 1], Max[domain]],
+                    If[EuclideanDistance[Part[firstPair, -1, 1], Part[secondPair, 1, 1]] > EuclideanDistance[Part[firstPair, -1, 1], max],
                         Message[threadStep::strcase, "2-1", index, "The last tuple" <> ToString[Part[{firstPair, secondPair}, All, -1]] <> " is further than one of them to the boudary " <> ToString[domain] <> ", if 2-1"]
                     ];
-                    If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, 1, 1]] < EuclideanDistance[Part[firstPair, 1, 1], Min[domain]] &&
+                    If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, 1, 1]] < EuclideanDistance[Part[firstPair, 1, 1], min] &&
                         Part[firstPair, 1, 1] < Part[secondPair, 1, 1] < Part[firstPair, -1, 1],
                         (* 1-1 *)
                         {{1, 2}},
@@ -415,10 +415,10 @@ threadStep[firstPair_, secondPair_, index_Integer, domain_Interval] := With[
                     Message[threadStep::strcase, "1-2", index, "The first tuple" <> ToString[Part[{firstPair, secondPair}, All, 1, 1]] <> " is further than the second point " <> Part[secondPair, -1, 1] <> ", if 1-2"];
                     {0},
                     (* 1-1 *)
-                    If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, 1, 1]] > EuclideanDistance[Part[secondPair, 1, 1], Min[domain]],
-                        Message[threadStep::strcase, "1-2", index, "The first tuple" <> ToString[Part[{firstPair, secondPair}, All, 1]] <> " is further than each other than one of them to the boudary " <> ToString[domain] <> ", if 1-1"]
+                    If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, 1, 1]] > EuclideanDistance[Part[secondPair, 1, 1], min],
+                        Message[threadStep::strcase, "1-2", index, "The first tuple" <> ToString[Part[{firstPair, secondPair}, All, 1]] <> " is further than each other than one of them to the boudary " <> ToString[{min, max}] <> ", if 1-1"]
                     ];
-                    If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, -1, 1]] < EuclideanDistance[Part[secondPair, -1, 1], Max[domain]],
+                    If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, -1, 1]] < EuclideanDistance[Part[secondPair, -1, 1], max],
                         (* 1-2 *)
                         {1, 1},
                         (* 2 starts *)
@@ -430,10 +430,10 @@ threadStep[firstPair_, secondPair_, index_Integer, domain_Interval] := With[
                     Message[threadStep::strcase, "1-2", index, "The first tuple" <> ToString[Part[{firstPair, secondPair}, All, 1, 1]] <> " is further than the second point " <> Part[secondPair, -1, 1] <> ", if 1-2"];
                     {0},
                     (* 1-2 *)
-                    If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, -1, 1]] > EuclideanDistance[Part[secondPair, -1, 1], Max[domain]],
-                        Message[threadStep::strcase, "1-2", index, "The last tuple" <> ToString[Part[{firstPair, secondPair}, All, -1]] <> " is further than each other than one of them to the boudary " <> ToString[domain] <> ", if 1-2"]
+                    If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, -1, 1]] > EuclideanDistance[Part[secondPair, -1, 1], max],
+                        Message[threadStep::strcase, "1-2", index, "The last tuple" <> ToString[Part[{firstPair, secondPair}, All, -1]] <> " is further than each other than one of them to the boudary " <> ToString[{min, max}] <> ", if 1-2"]
                     ];
-                    If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, 1, 1]] < EuclideanDistance[Part[secondPair, 1, 1], Min[domain]],
+                    If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, 1, 1]] < EuclideanDistance[Part[secondPair, 1, 1], min],
                         (* 1-1 *)
                         {1, 1},
                         (* 1 starts *)
@@ -444,7 +444,7 @@ threadStep[firstPair_, secondPair_, index_Integer, domain_Interval] := With[
 
         ),
         {1, 1} :> (
-            If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, 1, 1]] < RegionMeasure[domain] / 3,
+            If[EuclideanDistance[Part[firstPair, 1, 1], Part[secondPair, 1, 1]] < (max - min) / 3,
                 (* 1-1 *)
                 {1},
                 (* 1 ends, 1 starts*)
@@ -460,10 +460,10 @@ threadStep[firstPair_, secondPair_, index_Integer, domain_Interval] := With[
     Rare cases where there is not enough tuples in the list,
     not insteresting
 *)
-ThreadZeros[{}, (*domain*)_Interval] := {{}, {}}
-ThreadZeros[{zeroTuple_}, (*domain*)_Interval] := Transpose[{Part[zeroTuple, All, 1]}]
+ThreadZeros[{}, (*domain*)_] := {{}, {}}
+ThreadZeros[{zeroTuple_}, (*domain*)_] := Transpose[{Part[zeroTuple, All, 1]}]
 (* Use Thread to divide tuples into different branches *)
-ThreadZeros[zeroTuples:{_, __}, domain_Interval] := With[
+ThreadZeros[zeroTuples:{_, __}, domain_] := With[
     {
         steps = MapThread[threadStep[#1, #2, #3, domain]&, {
             Prepend[zeroTuples // Most, {}],

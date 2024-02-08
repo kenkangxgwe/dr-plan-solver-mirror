@@ -110,7 +110,7 @@ PrintDRPlan[node_DRNode]:= DynamicModule[
                             {"Cayley Vertices", Row[selectedNode["CayleyVertices"], ","]},
                             {"TwoTree Vertices", Row[selectedNode["TwoTreeVertices"], ","]},
                             If[selectedNode["IsCayleyNode"],
-                                {"Interval", MinMax[selectedNode["Interval"]]},
+                                {"Interval", selectedNode["Interval"]},
                                 Nothing
                             ],
                             If[!MissingQ[selectedNode["Solutions"]],
@@ -238,7 +238,7 @@ NodeManipulateRenderingFunction[node_DRNode, nodeSolution_NodeSolution, freeCayl
 
     visualCayleyLength = KeyMap[Part[EdgeList[node["Root"]["Graph"]], #]&, cayleyLength];
 
-    Column[{modifyGraph[graph], visualCayleyLength, DRPLAN`Solver`Private`dropDiff[node, graph]}]
+    Column[{modifyGraph[graph], visualCayleyLength, DRPLAN`Solver`Private`dropDiff[node, graph], DRPLAN`Solver`Private`$t}]
 ]
 
 
@@ -251,7 +251,7 @@ AnalyzeNode[node_DRNode, nodeSolution_NodeSolution] := Module[
     cayleys = Append[node["FreeCayley"], node["TargetCayley"]];
     labels = ("c" <> ToString[#]&) /@ cayleys;
     vars = Unique /@ labels;
-    {mins, maxs} = Transpose @ (MinMax /@ (Lookup[cayleys]@ domain));
+    {mins, maxs} = Transpose @ (Lookup[cayleys]@ domain);
     (* refinedDomain = IntervalIntersection[
         Domain[Last[cayleys]],
         refineInterval[node, Most[cayleys],

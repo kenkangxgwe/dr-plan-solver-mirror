@@ -33,11 +33,13 @@ FlipVectorIndices::usage = "FlipVectorIndices[graph_Graph] gives a list of indic
 ComputeFlipVector::usage = "ComputeFlipVector[graph_Graph] gives a flip vector of the input graph."
 PlanToOrignal::usage = "PlanToOriginal[graph_Graph, o:OptionsPatterns[]] gives the graph with all the Cayley parameters removed and dropped edges added back."
 PlanToTwotree::usage = "PlanToTwotree[graph_Graph, o:OptionsPatterns[]] gives the graph with all the Cayley parameters removed and without dropped edges."
+RangeUnion::usage = "RangeUnion[{min, max}, ...] gives the union of the ranges such that every number in between in covered by one of the input ranges. If such range doesn't exist, returns {Infinity, -Infinity}."
+RangeIntersection::usage = "RangeIntersection[{min, max}, ...] gives the intersection of the ranges such that every number in between is covered by all input ranges. If such range doesn't exist, returns {Infinity, -Infinity}."
 
 
 Begin["`Private`"]
 ClearAll[Evaluate[Context[] <> "*"]]
-Needs["DRPLAN`Core`"]
+(* Needs["DRPLAN`Core`"] *)
 
 
 (* ::Item:: *)
@@ -209,6 +211,28 @@ PlanToTwotree[graph_Graph, o:OptionsPattern[]] := Block[
     // Select[PropertyValue[{newGraph, #}, "EdgeType"] == "Drop"&]
     // EdgeDelete[newGraph, #]&
 ]
+
+
+RangeUnion[ranges:{_, _}..] := (
+    {ranges}
+    // SortBy[First]
+    // Fold[
+        If[Max[#1] >= Min[#2],
+            {Min[#1], Max[Max[#1], Max[#2]]},
+            Throw[{Infinity, -Infinity}]
+        ]&
+    ]
+    // Catch
+)
+
+
+RangeIntersection[ranges:{_, _}..] := (
+    {ranges}
+    // Transpose
+    // MapAt[Max, 1]
+    // MapAt[Min, -1]
+    // Replace[{min_, max_} /; (min > max) -> {Infinity, -Infinity}]
+)
 
 
 End[]
