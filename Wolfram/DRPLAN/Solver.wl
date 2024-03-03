@@ -1412,6 +1412,10 @@ KdTreeSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] 
         EuclideanDistance@@targetDomain / $KdSamplingDivider
     ]
     // Map[FinalizeSol]
+    // If[node["FreeCayley"] =!= {},
+        Select[Chop[EuclideanDistance[First[#], Last[#]]] != 0&],
+        Identity
+    ]
     // MapIndexed[interpZeros[node, nodeSolution, Part[#1, All, 1], Part[#1, All, 2], First[#2]]&]
 ]
 
