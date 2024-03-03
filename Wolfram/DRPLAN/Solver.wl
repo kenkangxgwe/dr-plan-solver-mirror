@@ -1631,23 +1631,24 @@ mergeZerosF[firstSols_List, secondSols_List] := Block[
         matchedIndices = matchIntervals[
             firstSols
             // MapIndexed[List /* Replace[{
-                {KeyValuePattern["Out" -> {Right, _, interval_}], {index_}} :> {interval, index},
+                {KeyValuePattern["Out" -> {Right, _, interval_}], {index_}} :> (interval -> index),
                 _ -> Nothing
-            }]] // SortBy[First],
+            }]] // Merge[Identity] // KeySort,
             secondSols // MapIndexed[List /* Replace[{
-                {KeyValuePattern["In" -> {Left, _, interval_}], {index_}} :> {interval, index},
+                {KeyValuePattern["In" -> {Left, _, interval_}], {index_}} :> (interval -> index),
                 _ -> Nothing
-            }]] // SortBy[First]
+            }]] // Merge[Identity] // KeySort
         ] // Reap // Last[Last[#], {}]&
     },
 
 	Join[
-        Complement[firstSols // Length // Range, Part[matchedIndices, All, 2, 1]]
+        Complement[firstSols // Length // Range, Part[matchedIndices, All, 2, 1] // Catenate]
         // Part[firstSols, #]&,
-        Complement[secondSols // Length // Range, Part[matchedIndices, All, 2, 2]]
+        Complement[secondSols // Length // Range, Part[matchedIndices, All, 2, 2] // Catenate]
         // Part[secondSols, #]& ,
         matchedIndices
         // Map[Apply[mergeSols[#1, {Part[firstSols, First[#2]], Part[secondSols, Last[#2]]}]&]]
+        // Catenate
     ]
 ]
 
@@ -1661,28 +1662,28 @@ mergeZerosT[firstSols_List, secondSols_List] := Block[
     matchedIndices1 = matchIntervals[
         firstSols
         // MapIndexed[List /* Replace[{
-            {KeyValuePattern["Out" -> {Top, _, interval_}], {index_}} :> {interval, index},
+            {KeyValuePattern["Out" -> {Top, _, interval_}], {index_}} :> (interval -> index),
             _ -> Nothing
-        }]] // SortBy[First],
+        }]] // Merge[Identity] // KeySort,
         secondSols
         // MapIndexed[List /* Replace[{
-            {KeyValuePattern["In" -> {Bottom, _, interval_}], {index_}} :> {interval, index},
+            {KeyValuePattern["In" -> {Bottom, _, interval_}], {index_}} :> (interval -> index),
             _ -> Nothing
-        }]] // SortBy[First]
+        }]] // Merge[Identity] // KeySort
     ] // Reap // Last[Last[#], {}]&;
 
     (* second out, first in *)
     matchedIndices2 = matchIntervals[
         secondSols
         // MapIndexed[List /* Replace[{
-            {KeyValuePattern["Out" -> {Bottom, _, interval_}], {index_}} :> {interval, index},
+            {KeyValuePattern["Out" -> {Bottom, _, interval_}], {index_}} :> (interval -> index),
             _ -> Nothing
-        }]] // SortBy[First],
+        }]] // Merge[Identity] // KeySort,
         firstSols
         // MapIndexed[List /* Replace[{
-            {KeyValuePattern["In" -> {Top, _, interval_}], {index_}} :> {interval, index},
+            {KeyValuePattern["In" -> {Top, _, interval_}], {index_}} :> (interval -> index),
             _ -> Nothing
-        }]] // SortBy[First]
+        }]] // Merge[Identity] // KeySort
     ] // Reap // Last[Last[#], {}]&;
 
 	Join[
@@ -1691,14 +1692,14 @@ mergeZerosT[firstSols_List, secondSols_List] := Block[
             Join[
                 Part[matchedIndices1, All, 2, 1],
                 Part[matchedIndices2, All ,2, 2]
-            ] // DeleteDuplicates
+            ] // Catenate // DeleteDuplicates
         ] // Part[firstSols, #]&,
         Complement[
             secondSols // Length // Range,
             Join[
                 Part[matchedIndices1, All, 2, 2],
                 Part[matchedIndices2, All ,2, 1]
-            ] // DeleteDuplicates
+            ] // Catenate // DeleteDuplicates
         ] // Part[secondSols, #]&,
         mergeIndices[firstSols, secondSols][matchedIndices1, matchedIndices2]
         // Reap // Last[Last[#], {}]&
@@ -1706,45 +1707,48 @@ mergeZerosT[firstSols_List, secondSols_List] := Block[
 ]
 
 
-matchIntervals[{}, {}] := Null
-matchIntervals[{{_, firstIndex_, matched_:False}, rest___}, {}] := (
-    If[Not[matched],
-        Sow[{1, {firstIndex, {}}}]
+matchIntervals[_?(SameAs[<||>]), _?(SameAs[<||>])] := Null
+
+matchIntervals[<|_ -> firstIndices_, rest___|>, _?(SameAs[<||>]), firstMatched_:False] := (
+    If[Not[firstMatched],
+        Sow[{1, {firstIndices, {}}}]
     ];
-    matchIntervals[{rest}, {}]
+    matchIntervals[<|rest|>, <||>]
 )
-matchIntervals[{}, {{_, secondIndex_, matched_:False}, rest___}] := (
-    If[Not[matched],
-        Sow[{2, {{}, secondIndex}}];
+
+matchIntervals[_?(SameAs[<||>]), <|_ -> secondIndices_, rest___|>, _:False, secondMatched_:False] := (
+    If[Not[secondMatched],
+        Sow[{2, {{}, secondIndices}}]
     ];
-    matchIntervals[{}, {rest}]
+    matchIntervals[<||>, <|rest|>]
 )
-matchIntervals[first:{{firstInterval_, firstIndex_, firstMatched_:False}, ___},
-    second:{{secondInterval_, secondIndex_, secondMatched_:False}, ___}] := (
+
+matchIntervals[first:<|firstInterval_ -> firstIndices_, ___|>, second:<|secondInterval_ -> secondIndices_, ___|>,
+    firstMatched_:False, secondMatched_:False] := (
     RangeIntersection[firstInterval, secondInterval]
     // Replace[{
         {Infinity, -Infinity} :> If[Max[firstInterval] < Max[secondInterval],
             If[Not[firstMatched],
-                Sow[{1, {firstIndex, {}}}]
+                Sow[{1, {firstIndices, {}}}]
             ];
             matchIntervals[Rest[first], second],
             If[Not[secondMatched],
-                Sow[{2, {{}, secondIndex}}]
+                Sow[{2, {{}, secondIndices}}]
             ];
             matchIntervals[first, Rest[second]]
         ],
         _ :> (
             Sow[{
                 If[{firstInterval, secondInterval}
-                    // Map[(Max[#] - Min[#])&]
+                    // Map[Apply[EuclideanDistance]]
                     // Apply[Less],
                     1,2
                 ],
-                {firstIndex, secondIndex}
+                {firstIndices, secondIndices}
             }];
             If[Max[firstInterval] < Max[secondInterval],
-                matchIntervals[Rest[first], Insert[second, True, {1, 3}]],
-                matchIntervals[Insert[first, True, {1, 3}], Rest[second]]
+                matchIntervals[Rest[first], second, False, True],
+                matchIntervals[first, Rest[second], True]
             ]
         )
     }]
@@ -1752,49 +1756,50 @@ matchIntervals[first:{{firstInterval_, firstIndex_, firstMatched_:False}, ___},
 
 
 mergeIndices[firstSols_List, secondSols_List, prevUps_Association:<||>, prevDowns_Association:<||>][{}, {}] = Null;
+
 mergeIndices[firstSols_List, secondSols_List, prevUps_Association:<||>, prevDowns_Association:<||>][ups_List, downs_List] := Block[
     {
-        selectUp,
-        upIndex, outUpIndex, inUpIndex,
-        downIndex, outDownIndex, inDownIndex,
-        inSol, newSols
+        selectUpQ,
+        upIndex, outUpIndices, inUpIndices,
+        downIndex, outDownIndices, inDownIndices,
+        inSols, newSols
     },
 
-    selectUp = Less[
+    selectUpQ = Less[
         If[Length[ups] > 0,
-            {upIndex, {outUpIndex, inUpIndex}} = First[ups];
+            {upIndex, {outUpIndices, inUpIndices}} = First[ups];
             If[upIndex == 1,
-                Part[firstSols, outUpIndex, Key["Out"]],
-                Part[secondSols, inUpIndex, Key["In"]]
+                Part[firstSols, First[outUpIndices], Key["Out"]],
+                Part[secondSols, First[inUpIndices], Key["In"]]
             ] // Part[#, 2, 1]&,
             Infinity
         ],
         If[Length[downs] > 0,
-            {downIndex, {outDownIndex, inDownIndex}} = First[downs];
+            {downIndex, {outDownIndices, inDownIndices}} = First[downs];
             If[downIndex == 1,
-                Part[secondSols, outDownIndex, Key["Out"]],
-                Part[firstSols, inDownIndex, Key["In"]]
+                Part[secondSols, First[outDownIndices], Key["Out"]],
+                Part[firstSols, First[inDownIndices], Key["In"]]
             ] // Part[#, 2, 1]&,
             Infinity
         ]
     ];
 
-    If[selectUp,
-        inSol = Part[secondSols, inUpIndex];
-        newSols = prevDowns[outUpIndex]
-            // Replace[_?MissingQ :> {Part[firstSols, outUpIndex]}]
-            // Map[mergeSols[upIndex, {#, inSol}]&];
-        If[inUpIndex =!= {} && Part[inSol, Key["Out"], 1] === Bottom,
-            Merge[{prevUps, <|inUpIndex -> newSols|>}, Catenate],
+    If[selectUpQ,
+        inSols = Part[secondSols, inUpIndices];
+        newSols = prevDowns[outUpIndices]
+            // Replace[_?MissingQ :> Part[firstSols, outUpIndices]]
+            // mergeSols[upIndex, {#, inSols}]&;
+        If[inUpIndices =!= {} && Part[inSols, 1, Key["Out"], 1] === Bottom,
+            Merge[{prevUps, <|inUpIndices -> newSols|>}, Catenate],
             newSols // Map[Sow];
             prevUps
         ] // mergeIndices[firstSols, secondSols, #, prevDowns][Rest[ups], downs]&,
-        inSol = Part[firstSols, inDownIndex];
-        newSols = prevUps[outDownIndex]
-            // Replace[_?MissingQ :> {Part[secondSols, outDownIndex]}]
-            // Map[mergeSols[downIndex, {#, inSol}]&];
-        If[inDownIndex =!= {} && Part[inSol, Key["Out"], 1] === Top,
-            Merge[{prevDowns, <|inDownIndex -> newSols|>}, Catenate],
+        inSols = Part[firstSols, inDownIndices];
+        newSols = prevUps[outDownIndices]
+            // Replace[_?MissingQ :> Part[secondSols, outDownIndices]]
+            // mergeSols[downIndex, {#, inSols}]&;
+        If[inDownIndices =!= {} && Part[inSols, 1, Key["Out"], 1] === Top,
+            Merge[{prevDowns, <|inDownIndices -> newSols|>}, Catenate],
             newSols // Map[Sow];
             prevDowns
         ] // mergeIndices[firstSols, secondSols, prevUps, #][ups, Rest[downs]]&
@@ -1803,21 +1808,23 @@ mergeIndices[firstSols_List, secondSols_List, prevUps_Association:<||>, prevDown
 ]
 
 
-mergeSols[_, {{}, inSol_Association}] := (
+mergeSols[_, {{}, inSols:{__Association}}] := Table[
     <|
         "In" -> (inSol["In"] // ReplacePart[1 -> Center]),
         "Out" -> inSol["Out"],
         "InternalPoints" -> Join[Part[inSol["In"], {2}], inSol["InternalPoints"]]
-    |>
-)
-mergeSols[_, {outSol_Association, {}}] := (
+    |>, {inSol, inSols}
+]
+
+mergeSols[_, {outSols:{__Association}, {}}] := Table[
     <|
         "In" -> outSol["In"],
         "Out" -> (outSol["Out"] // ReplacePart[1 -> Center]),
         "InternalPoints" -> Join[outSol["InternalPoints"], Part[outSol["Out"], {2}]]
-    |>
-)
-mergeSols[index_, {outSol_Association, inSol_Association}] := (
+    |>, {outSol, outSols}
+]
+
+mergeSols[index_, {outSols:{__Association}, inSols:{__Association}}] := Table[
     <|
         "In" -> outSol["In"],
         "Out" -> inSol["Out"],
@@ -1826,18 +1833,28 @@ mergeSols[index_, {outSol_Association, inSol_Association}] := (
             Part[{outSol["Out"], inSol["In"]}, index, {2}],
             inSol["InternalPoints"]
         ]
-    |>
-)
+    |>, {outSol, outSols}, {inSol, inSols}
+] // Catenate
 
 
 FinalizeSol[KeyValuePattern[{
-        "In" -> {inDirection_, inPoint_, _},
-        "Out" -> {outDirection_, outPoint_, _},
-        "InternalPoints" -> sol_
-    }]] := Join[
-    If[inDirection === Center, {}, {inPoint}],
-    sol,
-    If[outDirection === Center, {}, {outPoint}]
+    "In" -> {inDirection_, inPoint_, _},
+    "Out" -> {outDirection_, outPoint_, _},
+    "InternalPoints" -> sol_
+}]] := With[
+    {
+        points = Join[
+            If[inDirection === Center, {}, {inPoint}],
+            sol,
+            If[outDirection === Center, {}, {outPoint}]
+        ]
+    },
+
+    Part[points, All, 1]
+    // BlockMap[Apply[Equal], #, 2, 1]&
+    // Prepend[False]
+    // Position[True]
+    // Delete[points, #]&
 ]
 
 End[]
