@@ -171,6 +171,7 @@ GetFlip[node_DRNode, cflip_Association] := (
         #[False]
         // Replace[_?MissingQ -> {}]
     ]&
+    // Sort
 )
 
 GetFlip[node_DRNode] := Block[

@@ -282,7 +282,7 @@ PersistDRNode[node_DRNode] := (
 Options[SolveDRPlan] := Options[SolveNode]
 SolveDRPlan[node_DRNode, o:OptionsPattern[]] := Block[
     {
-        curSolutions, flipsToSolve
+        curSolutions, droppedSolutions, flipsToSolve
     },
 
     flipsToSolve = If[OptionValue["Reevaluate"] === "NextFlip",
@@ -291,21 +291,32 @@ SolveDRPlan[node_DRNode, o:OptionsPattern[]] := Block[
     ];
 
     If[!AssociationQ[node["FlipSolutions"]],
-        node["FlipSolutions"] = <||>
+        node["FlipSolutions"] = <||>;
+        node["DroppedFlipSolutions"] = <||>
     ];
     Table[
         Print[StringTemplate["Solving Two-tree flip: `1` / `2`"][flip, flipsToSolve]];
-        curSolutions = ToPlanSolution[node, #]& /@ SolveNode[node, All, o];
+        curSolutions = (
+            SolveNode[node, All, o]
+            // Map[ToPlanSolution[node, #]&]
+        );
+        droppedSolutions = curSolutions // Select[(Realize[node, #] // ComputeFlipVector) =!= Part[#, 2]&];
+        curSolutions = curSolutions // Select[(Realize[node, #] // ComputeFlipVector) === Part[#, 2]&];
         If[Length[curSolutions] != 0,
             Print[StringTemplate["`1` solutions found for DR-Plan at flip: `2`"][Length[curSolutions], ToString[GetFlip[node]]]];
         ];
+        node["DroppedFlipSolutions"] = Append[node["DroppedFlipSolutions"], GetFlip[node] -> droppedSolutions];
         node["FlipSolutions"] = Append[node["FlipSolutions"], GetFlip[node] -> curSolutions],
         {flip, flipsToSolve}
     ];
 ]
 
 ToPlanSolution[node_DRNode, nodeSolution_NodeSolution] := (
-    PlanSolution[(#[{}]&) /@ Part[nodeSolution, 1], GetFlip[node, Part[nodeSolution, 4]], Part[nodeSolution, 3]]
+    PlanSolution[
+        (#[{}]&) /@ Part[nodeSolution, 1],
+        GetFlip[node, Part[nodeSolution, 4]],
+        Part[nodeSolution, 3]
+    ]
 )
 
 
