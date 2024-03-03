@@ -846,8 +846,7 @@ interpZeros[node_DRNode, nodeSolution_NodeSolution, samples_, sampleList:{(_?Num
             ClearAll[x];
             Replace[Length[interpList], {
                 0|1 -> Nothing,
-                len_?(LessThan[8]) :> Interpolation[interpList, InterpolationOrder -> Min[len - 1, 3], Method -> "Hermite"],
-                _ :>  AlternativeInterpolation[interpList]
+                _ :> Interpolation[interpList, InterpolationOrder -> 1, Method -> "Hermite"]
             }], {interpList, BlockMap[Take[Replace[samplePoints, InterpolationPiece[p_] :> p, {2}], #]&, splitPos, 2 ,1]}
         ]
         // Replace[{} :> Return[{}]]
@@ -868,24 +867,39 @@ interpZeros[node_DRNode, nodeSolution_NodeSolution, samples_, sampleList:{(_?Num
 ]
 
 
-AlternativeInterpolation[list_List] := Module[
+AlternativeInterpolation[list_List] := Block[
     {
-        first, last, midOdd, midEven, interpOdd, interpEven
+        first, last, domain, midOdd, midEven, interpOdd, interpEven,
+        x
     },
-
-    If[Length[list] < 6,
-        Return[InterpolatingFunctionGroup[Interpolation[list, InterpolationOrder -> 3, Method -> "Hermite"]]]
-    ];
 
     first = First[list];
     last = Last[list];
-    {midOdd, midEven} = Part[GatherBy[Partition[Riffle[Most[Rest[list]], {"Odd", "Even"}], 2], Last], All, All, 1];
+    domain = Transpose[Most/@{first, last}];
+
+    If[Length[list] < 6; Null,
+        Interpolation[list, InterpolationOrder -> 3, Method -> "Hermite"],
+
+        {midOdd, midEven} = (
+            Partition[Take[list, {2, -2}], UpTo[2]]
+            // {
+                Map[First],
+                Map[Rest] /* Catenate
+            } // Through
+        );
 
         interpOdd = Interpolation[Join[{first}, midOdd, {last}], InterpolationOrder -> 3, Method -> "Hermite"];
         interpEven = Interpolation[Join[{first}, midEven, {last}], InterpolationOrder -> 3, Method -> "Hermite"];
 
-    InterpolatingFunctionGroup[interpOdd, interpEven]
+        x = Table[Unique["x"], Length[domain]];
+        MapThread[Prepend, {domain, x}]
+        // Prepend[(interpOdd@@x + interpEven@@x) / 2]
+        // Apply[FunctionInterpolation[#1, ##2]&]
 
+        (* InterpolatingFunctionGroup[interpOdd, interpEven] *),
+
+        Interpolation[list, InterpolationOrder -> 1, Method -> "Hermite"]
+    ]
 ]
 
 
