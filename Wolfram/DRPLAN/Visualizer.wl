@@ -114,7 +114,7 @@ PrintDRPlan[node_DRNode]:= DynamicModule[
                                 Nothing
                             ],
                             If[!MissingQ[selectedNode["Solutions"]],
-                                {"Solutions", selectedNode["Solutions"]},
+                                {"Solutions", selectedNode["Solutions"] // Map[Iconize]},
                                 Nothing
                             ]
                         }, Alignment -> {{Right, Left}, Top}]
@@ -203,7 +203,7 @@ trackNode[node_DRNode] := Module[
     },
 
     If[node =!= Null && !node["IsCayleyNode"],
-       nodeSolutions = mergeNodeSolution @@ (SolveNode /@ node["SubNodes"]);
+       nodeSolutions = DRPLAN`Solver`Private`mergeNodeSolution @@ (SolveNode /@ node["SubNodes"]);
        Row[Panel[Column[{ToString[#], AnalyzeNode[node, #]}, Center]]& /@ nodeSolutions]
     ]
 ]
