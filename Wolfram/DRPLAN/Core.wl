@@ -263,7 +263,8 @@ GenerateDRNodeImpl[{node_DRNode, edgeIndex_Integer?NonNegative, dropCounter_Inte
         Return[{freeCayley, subNodes}]
     ];
 
-    graph = node["Graph"];
+	(* Reorder the edges, if node is the root. *)
+    graph = node["Graph"] // If[node["Root"] === node,Subgraph[#, VertexList[#]]&, Identity];
     rootgraph = node["Root"]["Graph"];
     curEdge = EdgeList[graph][[edgeIndex]];
     rootEdgeIndex = EdgeIndex[rootgraph, curEdge];
