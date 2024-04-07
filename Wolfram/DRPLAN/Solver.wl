@@ -376,7 +376,6 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
             EdgeList[rootgraph],
             node["TargetCayley"]
         ]);
-        UnEcho[#, "nodeSolutions", (ToString/@#)&]& @ {
             NodeSolution[
                 <|node["TargetCayley"] -> ((node["FreeCayley"] // Map[Key]) /* Through /* First)|>, (* identity function *)
                 <|node["TargetCayley"] -> node["Interval"] + If[overflip, (
@@ -385,18 +384,15 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
                     // (# * $BoundaryRatio * {-1, 1})&
                 ), 0]|>, (* domain *)
                 {1}, (* D-flip index *)
-                <||> (* overwriting the C-flip*)
-            ],
+            <||> (* C-flip*)
+        ] // {
+            Identity,
             If[allCFlip,
-                NodeSolution[
-                    <|node["TargetCayley"] -> ((node["FreeCayley"] // Map[Key]) /* Through /* First)|>, (* identity function *)
-                    <|node["TargetCayley"] -> node["Interval"]|>, (* domain *)
-                    {1}, (* D-flip index *)
-                    <|cayleyVertex -> !PropertyValue[{rootgraph, cayleyVertex}, "Flip"]|> (* overwriting the C-flip*)
-                ],
+                ReplacePart[-1 -> <|cayleyVertex -> !PropertyValue[{rootgraph, cayleyVertex}, "Flip"]|>],
                 Nothing
             ]
-        },
+        } // Through
+        // UnEcho[#, "nodeSolutions", Map[ToString]]&,
 
         (* Memoization *)
         If[reevaluate === False && !MissingQ[node["Solutions"]],
@@ -550,8 +546,36 @@ calcCoords::cnof = "Cannot over flip edge `1` at length `2` since it is outside 
 calcCoords::wrdlen = "Weird length for triangle with edges `1`(`2`), `3`(`4`), `5`(`6`)."
 calcCoords[node_DRNode, cayleyLength_Association, flipVector_List] := Block[
     {
-        vertices = VertexList[node["Graph"]], v1, v2
+        graph = node["Root"]["Graph"],
+        vertices = VertexList[node["Graph"]], v1, v2,
+        overflipCayley = cayleyLength, overflipVector = flipVector
     },
+
+    cayleyLength
+    // KeyValueMap[{edge, length} \[Function] With[
+        {
+            interval = PropertyValue[{graph, Part[EdgeList[graph], edge]}, "Interval"],
+            overflipVertex = PropertyValue[{graph, Part[EdgeList[graph], edge]}, "OverflipVertex"]
+        },
+
+        length
+        // Replace[{
+            _?(LessThan[Min[interval]]) :> (
+                overflipVector = If[overflipVector // MemberQ[First[overflipVertex]],
+                    Complement[overflipVector, {First[overflipVertex]}],
+                    Union[overflipVector, {First[overflipVertex]}]
+                ];
+                overflipCayley[edge] = 2 * Min[interval] - length
+            ),
+            _?(GreaterThan[Max[interval]]) :> (
+                overflipVector = If[overflipVector // MemberQ[Last[overflipVertex]],
+                    Complement[overflipVector, {Last[overflipVertex]}],
+                    Union[overflipVector, {Last[overflipVertex]}]
+                ];
+                overflipCayley[edge] = 2 * Max[interval] - length
+            )
+        }]
+    ]];
 
     If[Length[vertices] > 2,
 
@@ -562,7 +586,7 @@ calcCoords[node_DRNode, cayleyLength_Association, flipVector_List] := Block[
                 v1 -> {0, 0},
                 v2 -> {PropertyValue[{node["Root"]["Graph"], v1<->v2}, EdgeWeight], 0}
             |>
-        } // calcCoordsImpl[node["Root"]["Graph"], cayleyLength, flipVector],
+        } // calcCoordsImpl[node["Root"]["Graph"], overflipCayley, overflipVector],
         <||>
     ]
 ] // Replace[err:Except[_Association] :> (Echo[err, "calcCoords returns"]; Abort[])]
@@ -580,7 +604,7 @@ calcCoordsImpl[rootgraph_Graph, cayleyLength_Association, flipVector_List][
         (* difference between coordinates *) dx, dy, dd,
         (* middle point of edges *) mx, my, md,
         (* determinant of quadratic equation *) delta,
-        sign, overflip = False, cayleyTrig = False
+        sign
     },
 
     If[Length[coordsList] < 2, Return[{{(* stop recursion *)}, coordsList}]];
@@ -608,14 +632,9 @@ calcCoordsImpl[rootgraph_Graph, cayleyLength_Association, flipVector_List][
                     sampleLength = cayleyLength[EdgeIndex[rootgraph, e]],
                     interval = AnnotationValue[{rootgraph, e}, "Interval"]
                 },
-           cayleyTrig = True;
-                If[sampleLength // Between[interval],
-                    sampleLength,
-                    If[sampleLength > Max[interval],
-                        2 * Max[interval] - sampleLength,
-                        2 * Min[interval] - sampleLength
-                    ]
-                    // Replace[Except[_?(Between[interval])] :> (
+
+                sampleLength
+                // Replace[_?(Between[interval]/*Not) :> (
                         Echo[{v0, v1, v2}, "Vertices"];
                         Echo[flipVector, "FlipVector"];
                         Echo[cayleyLength, "CaleyLength"];
@@ -623,9 +642,8 @@ calcCoordsImpl[rootgraph_Graph, cayleyLength_Association, flipVector_List][
                         Message[calcCoords::cnof, e, sampleLength, interval];
                         Abort[]
                     )]
-                ] // {sampleLength, #}&
             ],
-            "Partial" :> (PropertyValue[{rootgraph, e}, EdgeWeight] // {#, #}&),
+            "Partial" :> (PropertyValue[{rootgraph, e}, EdgeWeight]),
             err_ :> (Message[calcCoords::nttedge, e, err]; Abort[])
         }],
         {e, {v1 <-> v2, v0 <-> v1, v0 <-> v2}}
@@ -635,9 +653,6 @@ calcCoordsImpl[rootgraph_Graph, cayleyLength_Association, flipVector_List][
     {mx, my} = (c1 + c2) / 2;
     dd = d1 - d2;
     md = (d1 + d2) / 2;
-
-    overflip = (Part[{d0 - dd, md - d0 / 2, d0 + dd}, All, 1] // MemberQ[_?Negative]) && cayleyTrig;
-    {d0, d1, d2, dd, md} = Part[$t={d0, d1, d2, dd, md}, All, -1];
 
     delta = Max[(Chop[(d0 - dd) * (md - d0 / 2) * (d0 + dd)] * (md + d0 / 2)), 0]
     // Replace[err:Except[_?NumericQ] :> (
@@ -656,7 +671,7 @@ calcCoordsImpl[rootgraph_Graph, cayleyLength_Association, flipVector_List][
         (* Return["Unrealizable"]; *)
         {{(* stop recursion *)}, coordsList},
 
-        sign = If[Xor[MemberQ[flipVector, v0], overflip], 1, -1];
+        sign = If[MemberQ[flipVector, v0], 1, -1];
         {
             {restVertices},
             Append[

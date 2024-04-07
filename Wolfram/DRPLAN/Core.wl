@@ -329,14 +329,62 @@ ModifyBoundaries[node_DRNode, modifier_] := (
 (*calcInterval*)
 
 
-(* Calculate the interval from every added edge using linear programming. *)
-calcInterval[node_DRNode] := Module[
+calcInterval[node_DRNode] := Block[
     {
-        graph = node["Graph"], addEdgeIndices, addNum, edgeToCol,
+        graph = node["Graph"]
+    },
+
+    Replace[EdgeList[graph], {
+        UndirectedEdge[v1_, v2_]?(PropertyValue[{graph, #}, "EdgeType"] === "Add"&) :> Block[
+            {
+                commonVertices = (
+                    Intersection[AdjacencyList[graph, v1], AdjacencyList[graph, v2]]
+                    // DeleteCases[_?(PropertyValue[{graph, UndirectedEdge[#, v1]}, "EdgeType"] =!= "Partial"&)]
+                    // DeleteCases[_?(PropertyValue[{graph, UndirectedEdge[#, v2]}, "EdgeType"] =!= "Partial"&)]
+                ),
+                min = 0, minFlip, max = Infinity, maxFlip
+            },
+
+            Table[
+                With[
+                    {
+                        d1 = PropertyValue[{graph, UndirectedEdge[v0, v1]}, EdgeWeight],
+                        d2 = PropertyValue[{graph, UndirectedEdge[v0, v2]}, EdgeWeight]
+                    },
+
+                    If[min < Abs[d1 - d2],
+                        min = Abs[d1 - d2];
+                        minFlip = v0
+                    ];
+                    If[max > d1 + d2,
+                        max = d1 + d2;
+                        maxFlip = v0
+                    ];
+                ],
+                {v0, commonVertices}
+            ];
+
+            PropertyValue[{graph, UndirectedEdge[v1, v2]}, "Interval"] = {min, max};
+            PropertyValue[{graph, UndirectedEdge[v1, v2]}, "OverflipVertex"] = {
+                Max[minFlip, v1, v2],
+                Max[maxFlip, v1, v2]
+            }
+        ],
+        _ :> Nothing
+    }, {1}];
+
+    node["Graph"] = graph
+]
+
+
+(* Calculate the interval from every added edge using linear programming. *)
+calcIntervalLinearProgramming[node_DRNode] := Module[
+    {
+        graph = node["Graph"], cayleyEdges, numCayleys, edgeToCol,
         e, m, b, lu, commonVertex, cons, mins, maxs
     },
 
-    addEdgeIndices = Table[
+    cayleyEdges = Table[
         If[PropertyValue[{graph, e}, "EdgeType"] == "Add",
            EdgeIndex[graph, e],
            Nothing
@@ -344,14 +392,14 @@ calcInterval[node_DRNode] := Module[
         {e, EdgeList[graph]}
     ];
 
-    addNum = Length[addEdgeIndices];
-    edgeToCol = Association[Thread[(addEdgeIndices -> Range[addNum])]];
+    numCayleys = Length[cayleyEdges];
+    edgeToCol = Association[Thread[(cayleyEdges -> Range[numCayleys])]];
 
     (* see documentation for LinearProgramming for the meanings of `m`, `b` and `lu` *)
     {m, b, lu} = ((Flatten[#, 1]&) /@ (Transpose @ Table[
         e = EdgeList[graph][[ei]];
         commonVertex = Intersection[AdjacencyList[graph, First[e]], AdjacencyList[graph, Last[e]]];
-        cons = getConstraints[graph, {e, UndirectedEdge[First[e], #], UndirectedEdge[Last[e], #]}, edgeToCol, addNum]& /@ commonVertex;
+        cons = getConstraints[graph, {e, UndirectedEdge[First[e], #], UndirectedEdge[Last[e], #]}, edgeToCol, numCayleys]& /@ commonVertex;
         (Flatten[#, 1]&) /@ Transpose[cons],
         {ei, Keys[edgeToCol]}
     ]));
@@ -361,14 +409,14 @@ calcInterval[node_DRNode] := Module[
          // Merge[(RangeIntersection @@ #&)]
          // KeyValueMap[({{#1, 1} -> Min[#2], {#1, 2} -> Max[#2]}&)]
          // Flatten
-         // (SparseArray[# ~Join~ {{_, 1} -> -Infinity, {_,2} -> Infinity}, {addNum, 2}]&);
+         // (SparseArray[# ~Join~ {{_, 1} -> -Infinity, {_,2} -> Infinity}, {numCayleys, 2}]&);
     (*Echo@*MatrixForm/@{m, b, lu};*)
 
     mins = Association[
-        (# -> LinearProgramming[SparseArray[{#} -> 1, addNum], m, List @@@ b, List @@@ lu].SparseArray[{#} -> 1, addNum])& /@ Range[addNum]
+        (# -> LinearProgramming[SparseArray[{#} -> 1, numCayleys], m, List @@@ b, List @@@ lu].SparseArray[{#} -> 1, numCayleys])& /@ Range[numCayleys]
     ];
     maxs = Association[
-        (# -> -LinearProgramming[SparseArray[{#} -> -1, addNum], m, List @@@ b, List @@@ lu].SparseArray[{#} -> -1, addNum])& /@ Range[addNum]
+        (# -> -LinearProgramming[SparseArray[{#} -> -1, numCayleys], m, List @@@ b, List @@@ lu].SparseArray[{#} -> -1, numCayleys])& /@ Range[numCayleys]
     ];
     (* update interval for every edge *)
     Table[
