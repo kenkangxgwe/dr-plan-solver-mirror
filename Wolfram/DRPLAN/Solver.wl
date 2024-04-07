@@ -376,14 +376,14 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
             EdgeList[rootgraph],
             node["TargetCayley"]
         ]);
-            NodeSolution[
-                <|node["TargetCayley"] -> ((node["FreeCayley"] // Map[Key]) /* Through /* First)|>, (* identity function *)
-                <|node["TargetCayley"] -> node["Interval"] + If[overflip, (
-                    node["Interval"]
-                    // Apply[EuclideanDistance]
-                    // (# * $BoundaryRatio * {-1, 1})&
-                ), 0]|>, (* domain *)
-                {1}, (* D-flip index *)
+        NodeSolution[
+            <|node["TargetCayley"] -> ((node["FreeCayley"] // Map[Key]) /* Through /* First)|>, (* identity function *)
+            <|node["TargetCayley"] -> node["Interval"] + If[overflip, (
+                node["Interval"]
+                // Apply[EuclideanDistance]
+                // (# * $BoundaryRatio * {-1, 1})&
+            ), 0]|>, (* domain *)
+            {1}, (* D-flip index *)
             <||> (* C-flip*)
         ] // {
             Identity,
@@ -635,13 +635,13 @@ calcCoordsImpl[rootgraph_Graph, cayleyLength_Association, flipVector_List][
 
                 sampleLength
                 // Replace[_?(Between[interval]/*Not) :> (
-                        Echo[{v0, v1, v2}, "Vertices"];
-                        Echo[flipVector, "FlipVector"];
-                        Echo[cayleyLength, "CaleyLength"];
-                        Echo[coordsList];
-                        Message[calcCoords::cnof, e, sampleLength, interval];
-                        Abort[]
-                    )]
+                    Echo[{v0, v1, v2}, "Vertices"];
+                    Echo[flipVector, "FlipVector"];
+                    Echo[cayleyLength, "CaleyLength"];
+                    Echo[coordsList];
+                    Message[calcCoords::cnof, e, sampleLength, interval];
+                    Abort[]
+                )]
             ],
             "Partial" :> (PropertyValue[{rootgraph, e}, EdgeWeight]),
             err_ :> (Message[calcCoords::nttedge, e, err]; Abort[])
@@ -1449,11 +1449,11 @@ KdTreeSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] 
     dropDiffTolerance_?NumericQ, freeDistanceTolerance_?NumericQ, targetDistanceTolerance_?NumericQ])[
     {ft_Point, fT_Point, Ft_Point, FT_Point}] := Block[
     {
-        splitt, splitf, splitT, splitF,
+        splitBottom, splitLeft, splitTop, splitRight,
         ct, fc, cT, Fc, cc
     },
 
-    {splitt, splitf, splitT, splitF} = (
+    {splitBottom, splitLeft, splitTop, splitRight} = (
         {{ft, Ft}, {ft, fT}, {fT, FT}, {Ft, FT}}
         // Map[Apply[With[
             {
@@ -1473,25 +1473,149 @@ KdTreeSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] 
 
     {ct, fc, cT, Fc, cc} = (
         {{ft, Ft}, {ft, fT}, {fT, FT}, {Ft, FT}, {ft, FT}}
-        // Map[Apply[calcSamplePoint[node, solution, tFlip, Midpoint[{#1, #2}]]&]]
+        // Map[Midpoint /* (calcSamplePoint[node, solution, tFlip, #]&)]
     );
 
-    {splitt || splitT, splitf || splitF}
+    {splitBottom || splitTop, splitLeft || splitRight}
     // Replace[{
-        {False, False} :> (findZeroBoundaries[node, solution, tFlip, {ft, fT, Ft, FT}]),
+        {False, False} :> (findZeroBoundaries[node, solution, tFlip][{ft, fT, Ft, FT}]),
         {True, False} :> (
             mergeZerosF[
                 quadSampling[{ft, fT, ct, cT}],
                 quadSampling[{ct, cT, Ft, FT}]
             ]
+            // (Sow[{ft, FT} -> #]; #)&
         ),
         {False, True} :> (
             mergeZerosT[
                 quadSampling[{ft, fc, Ft, Fc}],
                 quadSampling[{fc, fT, Fc, FT}]
             ]
+            // (Sow[{ft, FT} -> #]; #)&
         ),
         {True, True} :> (
+            mergeZerosT[
+                mergeZerosF[
+                    quadSampling[{ft, fc, ct, cc}],
+                    quadSampling[{ct, cc, Ft, Fc}]
+                ]
+                // (Sow[{ft, Fc} -> #]; #)&,
+                mergeZerosF[
+                    quadSampling[{fc, fT, cc, cT}],
+                    quadSampling[{cc, cT, Fc, FT}]
+                ]
+                // (Sow[{fc, FT} -> #]; #)&
+            ]
+            // (Sow[{ft, FT} -> #]; #)&
+        )
+    }]
+]
+
+
+(* Internal use for getting List out of Point in Part *)
+UnwrapPoint = 1
+
+
+connectBoundaryZeros[actions_List] := Block[
+    {
+        realZeros, fakeZeros
+    },
+
+    realZeros = actions
+    // Cases[{"FindZero", findZeroFunction_}:> findZeroFunction[]];
+    fakeZeros = actions
+    // Cases[{"TakeMinima", minima_}:> minima]
+    // {}&;
+
+    Subsets[Join[realZeros, fakeZeros], {2}]
+    // Cases[{in:{_, inZero_, _}, out:{_, outZero_, _}} :> (
+        {in, out}
+        // If[First[inZero] > First[outZero],
+            Reverse,
+            Identity
+        ]
+    )]
+    // Replace[{} :> (
+        Subsets[fakeZeros, {1}]
+        // Cases[zero:{side_, _, _} :> (
+            {zero, zero // Replace[1 -> Center]}
+            // {
+                If[side =!= Right, Identity, Nothing],
+                If[side =!= Left, Reverse, Nothing]
+            } // Through
+        )]
+        // Catenate
+    )]
+    // Map[Apply[<|"In" -> #1, "Out" -> #2, "InternalPoints" -> {}|>&]]
+]
+
+
+(quadSampling:findZeroBoundaries[node_DRNode, solution_Association, tFlip_Association])[
+    {ft_Point, fT_Point, Ft_Point, FT_Point}] := Block[
+    {
+        fc, Fc, ct, cT, cc,
+        actions
+    },
+
+    actions = (
+        {
+            {Left, {ft, fT}},
+            {Right, {Ft, FT}},
+            {Bottom, {ft, Ft}},
+            {Top, {fT, FT}}
+        }
+        // Map[Apply[getBoundaryAction[
+            getGoalFunction[node, solution, tFlip],
+            #1, #2, dropLength[node]
+        ]&]]
+    );
+
+    actions
+    // Partition[#, 2]&
+    // Map[FirstCase[{"Split", splitFunction_}:> splitFunction]]
+    // Replace[{_?MissingQ, _?MissingQ} /; (
+        actions
+        // Count[{"FindZero", _}]
+        // Positive
+    ):> (
+        FirstCase[actions, {"SplitIfZeros", splitFunctions_} :> (
+            splitFunctions
+        ), {Missing["NotFound"], Missing["NotFound"]}]
+    )]
+    // Replace[{
+        {_?MissingQ, _?MissingQ} :> (
+            connectBoundaryZeros[actions]
+        ),
+        {splitFunction_, _?MissingQ} :> (
+            {fc, Fc} = (
+                {{ft, fT}, {Ft, FT}}
+                // Map[splitFunction /* (calcSamplePoint[node, solution, tFlip, #]&)]
+            );
+            mergeZerosT[
+                quadSampling[{ft, fc, Ft, Fc}],
+                quadSampling[{fc, fT, Fc, FT}]
+            ]
+        ),
+        {_?MissingQ, splitFunction_} :> (
+            {ct, cT} = (
+                {{ft, Ft}, {fT, FT}}
+                // Map[splitFunction /* (calcSamplePoint[node, solution, tFlip, #]&)]
+            );
+            mergeZerosF[
+                quadSampling[{ft, fT, ct, cT}],
+                quadSampling[{ct, cT, Ft, FT}]
+            ]
+        ),
+        {splitFunctionT_, splitFunctionF_} :> (
+            {fc, Fc} = (
+                {{ft, fT}, {Ft, FT}}
+                // Map[splitFunctionT /* (calcSamplePoint[node, solution, tFlip, #]&)]
+            );
+            {ct, cT, cc} = (
+                {{ft, Ft}, {fT, FT}, {fc, Fc}}
+                // Map[splitFunctionF /* (calcSamplePoint[node, solution, tFlip, #]&)]
+            );
+
             mergeZerosT[
                 mergeZerosF[
                     quadSampling[{ft, fc, ct, cc}],
@@ -1510,131 +1634,159 @@ KdTreeSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] 
 ]
 
 
-(* Internal use for getting List out of Point in Part *)
-UnwrapPoint = 1
-
-
-findZeroBoundaries[node_DRNode, solution_Association, tFlip_Association,
-    {ft_Point, fT_Point, Ft_Point, FT_Point}] := (
-        {ft, fT, Ft, FT}
-        // Part[#, All, UnwrapPoint, -1]&
-        // Apply[{ftD, fTD, FtD, FTD} \[Function]
-            {
-                If[ftD * fTD <= 0, {
-                    Left,
-                    Part[ft, UnwrapPoint, 1],
-                    Part[{ft, fT}, All, UnwrapPoint, 2]
-                } , Nothing],
-                If[ftD * FtD <= 0, {
-                    Bottom,
-                    Part[ft, UnwrapPoint, 2],
-                    Part[{ft, Ft}, All, UnwrapPoint, 1]
-                }, Nothing],
-                If[fTD * FTD <= 0, {
-                    Top,
-                    Part[FT, UnwrapPoint, 2],
-                    Part[{fT, FT}, All, UnwrapPoint, 1]
-                }, Nothing],
-                If[FtD * FTD <= 0, {
-                    Right,
-                    Part[FT, UnwrapPoint, 1],
-                    Part[{Ft, FT}, All, UnwrapPoint, 2]
-                }, Nothing]
-            }
-        ]
-        // Replace[{in:{inSide_, _, _}, out:{outSide_, _, _}} :> Block[
-            {
-                inZero, outZero
-            },
-
-            {inZero, outZero} = {in, out}
-                // Map[Apply[
-                    findZeros[node, solution, tFlip, ##]&
-                ]];
-
-            {
-                in // ReplacePart[2 -> inZero],
-                out // ReplacePart[2 -> outZero]
-            }
-            // If[inSide === Bottom &&
-                outSide === Top &&
-                First[inZero] > First[outZero],
-                Reverse,
-                Identity
-            ]
-            // Apply[{<|"In" -> #1, "Out" -> #2, "InternalPoints" -> {}|>}&]
-        )]
-)
-
-
-findZeros::noncubic = "Cannot find zeros using cubic fitting for `1`, trying linear"
-findZeros::nozeros = "No zeros found for `1`"
-findZeros[node_DRNode, solution_Association, tFlip_Association,
-    side:(Left|Bottom|Top|Right), fixedCayley_?NumericQ, {min_, max_}
-] := Block[
+getGoalFunction[node_DRNode, solution_Association, tFlip_Association][
+    fixedCayley_?NumericQ, isTargetFixed_?BooleanQ] := With[
     {
-        goalFunction = (
-            {fixedCayley, #}&
-            /* Replace[side, {
-                (Left|Right) -> Identity,
-                (*Top|Bottom*)_ -> Reverse
-            }]
-            /* Apply[realizeNode[node, solution, tFlip, <|
+        cayleyLengthSlot = (
+            {(*uncaptured slot:*)Slot[1], fixedCayley}
+            // If[isTargetFixed,
+                Identity,
+                Reverse
+            ]
+            // Apply[{
                 node["FreeCayley"]
                 // Replace[{
                     {firstFree_, ___} :> (firstFree -> #1),
                     {} -> (Nothing)
                 }],
                 node["TargetCayley"] -> #2
-            |>]&]
-            /* Replace[{
-                coordinates_Association :> dropDiff[node, coordinates],
-                err_ :> (Echo[err, "Unknown Result"]; Abort[])
-            }]
+            }&]
         )
     },
 
-    (* Finds a zero point of goal function using cubic fitting *)
-    Subdivide[min, max, 3]
-    // {
-        Identity,
-        Map[goalFunction]
-    } // Through
-    // Transpose
-    // Replace[{
-        samples_?(MatrixRank[#] == 4&) :> Block[
+    Function[realizeNode[node, solution, tFlip, cayleyLengthSlot // Association]]
+    /* Replace[{
+        coordinates_Association :> dropDiff[node, coordinates],
+        err_ :> (Echo[err, "Unknown Result"]; Abort[])
+    }]
+]
+
+
+fitGoalFunction[goalFunction_, {min_, max_}] := Block[
+    {
+        samples = Subdivide[min, max, 3],
+        designMatrix, responseVec
+    },
+
+    designMatrix = (
+        samples
+        // Map[#^Range[3]& /* Prepend[1]]
+        // NestWhile[Take[#, All, {1, -2}]&, #, Less[MatrixRank, First /* Length] /* Through]&
+    );
+    responseVec = samples // Map[goalFunction];
+
+    With[
+        {
+            body = (
+                Slot[1]^Range[3]
+                // Prepend[1]
+                // Apply[LinearModelFit[{designMatrix, responseVec}]["Function"]]
+            )
+        },
+        body&
+    ]
+]
+
+
+$FakeZeroTolerance = 0.05
+
+
+getBoundaryAction[goalFunctionGetter_, side:(Left|Bottom|Top|Right), points:{_Point, _Point}, targetDrop_?NumericQ] := Block[
+    {
+        fixedIndex = If[side // MatchQ[Left|Right], 1, 2],
+        dropDiffs =  Part[points, All, UnwrapPoint, -1],
+        fixedCayley, range, goalFunction, fittingFunction
+    },
+
+    fixedCayley = Part[points, 1, UnwrapPoint, fixedIndex];
+    range = Part[points, All, UnwrapPoint, 3 - fixedIndex];
+    goalFunction = goalFunctionGetter[fixedCayley, (*isTargetFixed=*)fixedIndex == 2];
+    fittingFunction = fitGoalFunction[goalFunction, range];
+
+    If[(dropDiffs // Apply[Times]) <= 0,
+        With[
             {
-                x, sol
+                rangeConst = range,
+                fittingFunctionConst = fittingFunction,
+                zeroPoint = Part[points, 1, UnwrapPoint, {1, 2}],
+                runningIndex = 3 - fixedIndex
+            },
+            {
+                "FindZero",
+                findZeros[fittingFunctionConst, rangeConst]&
+                /* MinimalBy[goalFunction]
+                /* Replace[{
+                    {root_, ___} :> {
+                        side,
+                        zeroPoint
+                        // ReplacePart[runningIndex -> root],
+                        rangeConst
+                    },
+                    {} -> Missing["NoZeros"]
+                }]
+            }
+        ],
+        (* {"DoNothing"}, *)
+        With[
+            {
+                dFittingFunction = D[fittingFunction[x], x]  // ReplaceAll[{x -> Slot[1]}],
+                furtherDiff = MaximalBy[dropDiffs, Abs] // First
             },
 
-            sol
-            /; (
-                Check[LinearModelFit[samples, x ^ Range[3], x], Echo[samples]; Abort[]]&
-                // NSolve[#["BestFit"] == 0 && min <= x <= max, {x}, Reals]&
-                // Map[x/.#&]
-                // MinimalBy[goalFunction]
-                // Replace[{
-                    {root_} :> (sol = root; True),
-                    {} :> (Message[findZeros::noncubic, {side, fixedCayley, {min, max}}]; False)
-                }]
-            )
-        ],
-        {{x1_, y1_}, _, _, {x2_, y2_}} :> (
-            (* linear fit *)
-            (x2 * y1 - x1 * y2) / (y1 - y2)
+            findZeros[Function[dFittingFunction], range]
+            // Map[{
+                Identity,
+                goalFunction
+            } /* Through]
+            // MinimalBy[Last /* (# * furtherDiff&)]
+            // First[#, {}]&
             // Replace[{
-                Except[_?(Between[{min, max}])] :> (
-                    Message[findZeros::nozeros, {side, fixedCayley, {min, max}}];
-                    Abort[]
-                )
+                {splitPoint_, _?(# * furtherDiff& /* NonPositive)} :> {
+                    "Split",
+                    First /* ReplacePart[{UnwrapPoint, 3 - fixedIndex} -> splitPoint]
+                },
+                {minima_, _?(
+                    Abs
+                    /* LessThan[
+                        dropDiffs
+                        // Append[targetDrop * $FakeZeroTolerance]
+                        // Abs // Min
+                    ]
+                )} :> {
+                    (* {"DoNothing"} *)
+                    "SplitIfZeros",
+                    {
+                        First /* ReplacePart[{UnwrapPoint, 3 - fixedIndex} -> minima],
+                        Midpoint
+                    }
+                    // If[fixedIndex == 1, Identity, Reverse]
+                    (* "TakeMinima",
+                    {
+                        side,
+                        Part[points, 1, UnwrapPoint, {1, 2}]
+                        // ReplacePart[(3 - fixedIndex) -> minima],
+                        range
+                    } *)
+                },
+                _ -> {"DoNothing"}
             }]
-        )
-    }]
-    // {fixedCayley, #}&
-    // Replace[side, {
-        (Left|Right) -> Identity,
-        (*Top|Bottom*)_ -> Reverse
-    }]
+        ]
+    ]
+]
+
+
+findZeros[function_, range:{min_, max_}] := Block[
+    {
+        x
+    },
+
+    Check[
+        NSolve[function[x] == 0 && min <= x <= max, {x}, Reals],
+        (* If the solution is the full range, take its middle point *)
+        {x -> Mean[range]},
+        {NSolve::fulldim, NSolve::ratnz}
+    ]
+    // Map[x/.#&]
 ]
 
 
@@ -1742,7 +1894,8 @@ matchIntervals[first:<|firstInterval_ -> firstIndices_, ___|>, second:<|secondIn
     firstMatched_:False, secondMatched_:False] := (
     RangeIntersection[firstInterval, secondInterval]
     // Replace[{
-        {Infinity, -Infinity} :> If[Max[firstInterval] < Max[secondInterval],
+        {Infinity, -Infinity} |
+        _?(Apply[EuclideanDistance]/*EqualTo[0]) :> If[Max[firstInterval] < Max[secondInterval],
             If[Not[firstMatched],
                 Sow[{1, {firstIndices, {}}}]
             ];
