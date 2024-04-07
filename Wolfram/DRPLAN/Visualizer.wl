@@ -196,14 +196,19 @@ HighlightNode[node_DRNode] := Module[
 (* ::Subsection:: *)
 (*trackNode*)
 
+Options[trackNode] = {
+    "Overflip"-> False
+}
 
-trackNode[node_DRNode] := Module[
+trackNode[node_DRNode, o:OptionsPattern[]] := Module[
     {
-        nodeSolutions
+        nodeSolutions, overflip = OptionValue["Overflip"]
     },
 
     If[node =!= Null && !node["IsCayleyNode"],
-       nodeSolutions = DRPLAN`Solver`Private`mergeNodeSolution @@ (SolveNode /@ node["SubNodes"]);
+       nodeSolutions = DRPLAN`Solver`Private`mergeNodeSolution @@ (
+            SolveNode[#, "Overflip"-> overflip]& /@ node["SubNodes"]
+        );
        Row[Panel[Column[{ToString[#], AnalyzeNode[node, #]}, Center]]& /@ nodeSolutions]
     ]
 ]
