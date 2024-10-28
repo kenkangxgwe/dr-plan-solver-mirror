@@ -344,6 +344,13 @@ $SowSampleList = False
     - "Parallelize":
         - False: do not leverage multiple cores;
         - True: leverage multiple cores for parallel computing;
+    - "Overflip":
+        - False: Sampling within current flip.
+        - True: Take a few sample points on another flip to smooth the boundary.
+    Options from SolveDFlip:
+    - "Method":
+        - "UniformSampling": use uniform sampling steps.
+        - "KdTree": sampling by partitioning the space into k-d trees.
 *)
 Options[SolveNode] := {
     "Reevaluate" -> False,
@@ -439,7 +446,6 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
         nodeI = PersistDRNode[node];
 
         $SowSampleList = sowSampleList;
-        $Overflip = overflip;
 
         (* Solve a flip *)
         {solutions, $sampleLists} = If[parallelize,
@@ -766,14 +772,18 @@ GetSparseSampleDistance[sampleNum_] := Max[Round[$SampleDivisor / sampleNum], 1]
 GetDenseSampleDistance[sampleNum_] := Max[Round[$SampleDivisor / sampleNum / $DenseMultipler], 1] (* the distance between two dense samples *)
 $DenseSampleDistance = GetDenseSampleDistance[$SampleNum]
 $LeftBoundaryEnd = Max[Round[$SampleDivisor * $BoundaryRatio], 1]
+$OverflipLeftBoundaryEnd = Max[Round[$SampleDivisor / (1 / (2 * $BoundaryRatio) + 1)], 1]
 $RightBoundaryStart = Max[$SampleDivisor - Round[$SampleDivisor * $BoundaryRatio], 1]
+$OverflipRightBoundaryStart = Max[$SampleDivisor - Round[$SampleDivisor / (1 / (2 * $BoundaryRatio) + 1)], 1]
 $ResampleRatio = 0.15
 $ZeroRatio = 0.01
 
 
 (* return a list of sample indices from 0 to $SampleDivisor *)
-getSamples[{left_, right_}, planShortestEdge_?NumericQ] := Module[
+getSamples[{left_, right_}, planShortestEdge_?NumericQ, overflip_?BooleanQ] := Module[
     {
+        leftEnd = If[overflip, $OverflipLeftBoundaryEnd, $LeftBoundaryEnd],
+        rightStart = If[overflip, $OverflipRightBoundaryStart, $RightBoundaryStart],
         sampleNum,
         sampleIndices
     },
@@ -783,9 +793,9 @@ getSamples[{left_, right_}, planShortestEdge_?NumericQ] := Module[
 
     sampleIndices = If[$RefineSampling,
         Join[
-            Range[0, $LeftBoundaryEnd, GetDenseSampleDistance[sampleNum]], (* Left End Point & Left Boundary*)
-            Range[$LeftBoundaryEnd, $RightBoundaryStart, GetSparseSampleDistance[sampleNum]], (* Center *)
-            Range[$RightBoundaryStart, $SampleDivisor, GetDenseSampleDistance[sampleNum]], (*Right Boundary*)
+            Range[0, leftEnd, GetDenseSampleDistance[sampleNum]], (* Left End Point & Left Boundary*)
+            Range[leftEnd, rightStart, GetSparseSampleDistance[sampleNum]], (* Center *)
+            Range[rightStart, $SampleDivisor, GetDenseSampleDistance[sampleNum]], (*Right Boundary*)
             {$SampleDivisor} (* Right End Point*)
         ],
         Join[
@@ -832,16 +842,24 @@ refineInterval[node_DRNode, targetCayley_, cayleyLength_Association] := Module[
 (*Solve D-Flip*)
 
 
-Options[SolveDFlip] = {
-    "Method" -> "UniformSampling" (* "KdTree" *)
-}
+Options[SolveDFlip] := {
+    "Method" -> "UniformSampling" (* "KdTree" *),
+    "Overflip" -> False
+} ~Join~ Options[UniformSampling]
 
-SolveDFlip[args__, o:OptionsPattern[]] := (
-    If[OptionValue["Method"] == "UniformSampling",
-        UniformSampling[args],
+
+SolveDFlip[args__, o:OptionsPattern[]] := Block[
+    {
+        method, overflip
+    },
+
+    {method, overflip} = OptionValue[SolveDFlip, {o}, {"Method", "Overflip"}];
+
+    If[method == "UniformSampling",
+        UniformSampling[args, overflip],
         KdTreeSampling[args]
     ]
-)
+]
 
 
 realizeNode[node_DRNode, solution_Association, tFlip_Association, sample_Association] := With[
@@ -964,7 +982,7 @@ UniformSampling::dupz = "`1` zeros are found.";
 UniformSampling::noz = "no zeros are found.";
 UniformSampling::nosolplan = "no solution for the dr-plan.";
 (* This function solves the given dropped flip. *)
-UniformSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := Module[
+UniformSampling[node_DRNode, nodeSolution_NodeSolution, overflip_?BooleanQ, dropOffset:_?NumericQ:1] := Module[
     {
         domain, sampleNum,
         firstSamples, firstResults,
@@ -979,7 +997,7 @@ UniformSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1]
     {sampleNum, firstSamples} = If[node["FreeCayley"] =!= {},
         (* only handles flex-1 case *)
         KeyTake[domain, First[node["FreeCayley"]]]
-        // Map[getSamples[#, node["Root"]["PlanShortestEdge"]]&]
+        // Map[getSamples[#, node["Root"]["PlanShortestEdge"], overflip]&]
         // First,
         Echo["Last Cayley"];
         (* $on = True; *)
@@ -991,10 +1009,12 @@ UniformSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1]
     (* If[$on, Echo[firstSamples]]; *)
     (* Echo[node["FreeCayley"]]; *)
     firstResults = If[node["FreeCayley"] === {},
-        {Tuple[scanSamples[node, nodeSolution, dropOffset][<||>]]},
+        {Tuple[scanSamples[node, nodeSolution, overflip, dropOffset][<||>]]},
         (* firstSamples is a sparse array, should not use Replace[..., {1}] *)
         firstSamples // Map[Replace[freeSample:Except[_Missing] :> (
-            Tuple[scanSamples[node, nodeSolution, dropOffset][<|First[node["FreeCayley"]] -> freeSample|>]]
+            Tuple[scanSamples[node, nodeSolution, overflip, dropOffset][
+                <|First[node["FreeCayley"]] -> freeSample|>]
+            ]
         )]]
     ];
     (* If[$on, Echo[firstResults]]; *)
@@ -1009,7 +1029,9 @@ UniformSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1]
 
         (* $on = True; *)
         refinedResults = (Replace[freeSample:Except[_Missing] :> (
-            Tuple[scanSamples[node, nodeSolution, dropOffset][<|First[node["FreeCayley"]] -> freeSample|>]]
+            Tuple[scanSamples[node, nodeSolution, overflip, dropOffset][
+                <|First[node["FreeCayley"]] -> freeSample|>]
+            ]
         )] /@ refinedFreeSamples);
 
         finalSamples = UnEcho@SparseArray[
@@ -1019,8 +1041,7 @@ UniformSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1]
         finalResults = UnEcho@SparseArray[
             Most[ArrayRules[firstResults]] ~Join~ Most[ArrayRules[refinedResults]],
             $SampleDivisor + 1, Missing["NotSampled"]
-        ];
-
+        ]
     ];
 
     (*Print[sampleLists];*)
@@ -1040,7 +1061,8 @@ UniformSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1]
 ]
 
 
-scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][freeSample_Association] := Module[
+scanSamples[node_DRNode, nodeSolution_NodeSolution, overflip_?BooleanQ, dropOffset:_?NumericQ:1][
+        freeSample_Association] := Module[
     {
         solution, domain, tFlip, sampleNum,
         targetDomain, targetSamples,
@@ -1057,7 +1079,7 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
         Echo[freeSample,"Empty Refined Interval"]; Return[{}]
     ];
 
-    {sampleNum, targetSamples} = getSamples[targetDomain, node["Root"]["PlanShortestEdge"]];
+    {sampleNum, targetSamples} = getSamples[targetDomain, node["Root"]["PlanShortestEdge"], overflip];
     sampleList = (Replace[targetSample:Except[_Missing] :> (
         realizeNode[node, solution, tFlip,
             Append[freeSample, node["TargetCayley"] -> targetSample]
@@ -1407,7 +1429,7 @@ $KdDenseDivider = 3
 
 
 (* Only supports 2d tree (flex-1 case) for now. *)
-KdTreeSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] := Block[
+KdTreeSampling[node_DRNode, nodeSolution_NodeSolution] := Block[
     {
         solution, domain, tFlip, freeDomain, targetDomain
     },
