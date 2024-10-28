@@ -1428,7 +1428,14 @@ KdTreeSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] 
     // QuadSampling[node, solution, tFlip,
         node["Root"]["PlanShortestEdge"] / $KdSamplingDivider,
         EuclideanDistance@@freeDomain / $KdSamplingDivider,
-        EuclideanDistance@@targetDomain / $KdSamplingDivider
+        EuclideanDistance@@targetDomain / $KdSamplingDivider,
+        If[node["FreeCayley"] =!= {},
+            node["Root"]["Graph"]
+            // AnnotationValue[{#, Part[EdgeList[#], node["FreeCayley"] // (*Flex-1*) First]}, "Interval"]&,
+            {}
+        ],
+        node["Root"]["Graph"]
+        // AnnotationValue[{#, Part[EdgeList[#], node["TargetCayley"]]}, "Interval"]&
     ]
     // Last
     // Map[FinalizeSol]
@@ -1454,6 +1461,22 @@ KdTreeSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] 
 )
 
 
+BoundarySampleQ[boundaries_List][range_] := With[
+    {
+        (*
+            SetDelayed because it is only needed for non-empty boundaries.
+        *)
+        boundaryLength := (
+            boundaries
+            // Apply[EuclideanDistance]
+            // (# * $BoundaryRatio)&
+        )
+    },
+
+    boundaries
+    // Map[(# + {-1, 1} * boundaryLength)&]
+    // Map[RangeIntersection[#, range]& /* Apply[Less]]
+    // Apply[Or]
 ]
 
 
@@ -1468,8 +1491,8 @@ KdTreeSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] 
       freeCayley
 *)
 (quadSampling:QuadSampling[node_DRNode, solution_Association, tFlip_Association,
-    dropDiffTolerance_?NumericQ, freeDistanceTolerance_?NumericQ, targetDistanceTolerance_?NumericQ])[
-    {ft_Point, fT_Point, Ft_Point, FT_Point}] := Block[
+    dropDiffTolerance_?NumericQ, freeDistanceTolerance_?NumericQ, targetDistanceTolerance_?NumericQ,
+    freeBoundary_List, targetBoundary_List])[{ft_Point, fT_Point, Ft_Point, FT_Point}] := Block[
     {
         splitBottom, splitLeft, splitTop, splitRight,
         ct, fc, cT, Fc, cc
@@ -1479,10 +1502,17 @@ KdTreeSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] 
         {{ft, Ft}, {ft, fT}, {fT, FT}, {Ft, FT}}
         // Map[Apply[With[
             {
-                denseDivider = If[Part[{#1, #2}, All, UnwrapPoint, 3]
-                    // Abs
-                    // Min
-                    // LessEqualThan[$ZeroRatio * dropLength[node]],
+                denseDivider = If[(
+                        (* delta < threshold *)
+                        Part[{#1, #2}, All, UnwrapPoint, 3]
+                        // Abs
+                        // Min
+                        // LessEqualThan[$ZeroRatio * dropLength[node]]
+                    ) || (
+                        (* range includes boundary *)
+                        BoundarySampleQ[freeBoundary][Part[{#1, #2}, All, UnwrapPoint, 1]] ||
+                        BoundarySampleQ[targetBoundary][Part[{#1, #2}, All, UnwrapPoint, 2]]
+                    ),
                     $KdDenseDivider,
                     1
                 ]
