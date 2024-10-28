@@ -577,6 +577,13 @@ calcCoords[node_DRNode, cayleyLength_Association, flipVector_List] := Block[
         }]
     ]];
 
+    Replace[overflipCayley,
+        err: Except[<|(_Integer -> _?NumericQ)...|>] :> (
+            Echo[err, "cayleyLength"];
+            Abort[]
+        )
+    ];
+
     If[Length[vertices] > 2,
 
         {v1, v2} = Take[vertices, 2];
@@ -654,7 +661,7 @@ calcCoordsImpl[rootgraph_Graph, cayleyLength_Association, flipVector_List][
     dd = d1 - d2;
     md = (d1 + d2) / 2;
 
-    delta = Max[(Chop[(d0 - dd) * (md - d0 / 2) * (d0 + dd)] * (md + d0 / 2)), 0]
+    delta = Max[((d0 - dd) * (md - d0 / 2) * (d0 + dd) * (md + d0 / 2)), 0]
     // Replace[err:Except[_?NumericQ] :> (
         Print["delta: ", err, {d1, d2}, cayleyLength];
         Abort[]
@@ -685,7 +692,8 @@ calcCoordsImpl[rootgraph_Graph, cayleyLength_Association, flipVector_List][
                         Echo[err, "Coordinates"];
                         Echo[flipVector, "FlipVector"];
                         Echo[cayleyLength, "CaleyLength"];
-                        Echo[coordsList];
+                        Echo[coordsList, "CoordsList"];
+                        Echo[err, v0];
                         Abort[]
                     ),
                     err_ /; (Chop[EuclideanDistance[err, c1] - d1] != 0 ||
@@ -693,11 +701,13 @@ calcCoordsImpl[rootgraph_Graph, cayleyLength_Association, flipVector_List][
                         Echo[d0, "d0"];
                         Echo[dd, "dd"];
                         Echo[md, "md"];
+                        Echo[delta, "delta"];
                         Echo[{v0, v1, v2}, "Vertices"];
                         Echo[err, "Coordinates"];
                         Echo[flipVector, "FlipVector"];
                         Echo[cayleyLength, "CaleyLength"];
-                        Echo[coordsList];
+                        Echo[coordsList, "CoordsList"];
+                        Echo[err, v0];
                         Abort[]
                     )
                 }]
@@ -833,6 +843,14 @@ SolveDFlip[args__, o:OptionsPattern[]] := (
 realizeNode[node_DRNode, solution_Association, tFlip_Association, sample_Association] := With[
     {
         cayleyLength = ((#[sample]&) /@ solution)
+        // Replace[
+            err: Except[<|(_Integer -> _?NumericQ)...|>] :> (
+                Echo[err, "cayleyLength"];
+                Echo[sample, "sample"];
+                Echo[solution, "solution"];
+                Abort[]
+            )
+        ]
     },
 
     Check[
