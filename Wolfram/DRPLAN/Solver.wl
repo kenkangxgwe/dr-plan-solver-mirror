@@ -321,7 +321,7 @@ ToPlanSolution[node_DRNode, nodeSolution_NodeSolution] := (
 
 
 (* $NodeSolutionCallback should fall back to no-op *)
-Unset[$NodeSolutionCallback] ^:= ($NodeSolutionCallback = #&;)
+Unset[$NodeSolutionCallback] ^:= ($NodeSolutionCallback[sols_, _DRNode] := sols;)
 Unset[$NodeSolutionCallback]
 
 
