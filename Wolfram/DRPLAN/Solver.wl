@@ -1819,16 +1819,22 @@ getBoundaryAction[goalFunctionGetter_, side:(Left|Bottom|Top|Right), points:{_Po
 
 findZeros[function_, range:{min_, max_}] := Block[
     {
-        x
+        x, startPoints = (Subdivide[min, max, 3]) // SortBy[function/*Abs]
     },
 
-    Check[
-        NSolve[function[x] == 0 && min <= x <= max, {x}, Reals],
-        (* If the solution is the full range, take its middle point *)
-        {x -> Mean[range]},
-        {NSolve::fulldim, NSolve::ratnz}
+    FoldWhile[
+        Function[{sols, startPoint},
+            Quiet[Check[
+                FindRoot[function[x], {x, startPoint, min, max}],
+                {}, {FindRoot::reged, FindRoot::lstol}
+            ], {FindRoot::reged, FindRoot::lstol}]
+            // Map[x/.#&]
+            // Select[function /* Abs /* LessThan[1*^-5]]
+        ],
+        {},
+        startPoints,
+        SameAs[{}]
     ]
-    // Map[x/.#&]
 ]
 
 
