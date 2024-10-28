@@ -1667,9 +1667,9 @@ connectBoundaryZeros[actions_List] := Block[
     },
 
     realZeros = actions
-    // Cases[{"TakeZero", zero_} :> zero];
+    // Cases[{_, {"TakeZero", zero_}}:> zero];
     fakeZeros = actions
-    // Cases[{"TakeMinima", minima_}:> minima];
+    // Cases[{_, {"TakeMinima", minima_}}:> minima];
     (* // {}&; *)
 
     Join[
@@ -1711,157 +1711,246 @@ connectBoundaryZeros[actions_List] := Block[
 ]
 
 
+Options[FindZeroBoundaries] = {
+    "Cache" -> <||>
+}
+
+
 (findZeroBoundaries:FindZeroBoundaries[node_DRNode, solution_Association, tFlip_Association])[
-    {ft_Point, fT_Point, Ft_Point, FT_Point}] := Block[
+    {ft_Point, fT_Point, Ft_Point, FT_Point}, o:OptionsPattern[]] := Block[
     {
         fc, Fc, ct, cT, cc,
-        actions
+        actions, cache
     },
 
-    actions = (
+    {cache} = OptionValue[FindZeroBoundaries, {o}, {"Cache"}];
+
+    Block[
         {
-            {Left, {ft, fT}},
-            {Right, {Ft, FT}},
-            {Bottom, {ft, Ft}},
-            {Top, {fT, FT}}
-        }
-        // Map[Apply[getBoundaryAction[
-            getGoalFunction[node, solution, tFlip],
-            #1, #2, dropLength[node]
-        ]&]]
-    );
+            cacheF, cacheT
+        },
+
+        actions = (
+            {
+                {Left, {ft, fT}},
+                {Right, {Ft, FT}},
+                {Bottom, {ft, Ft}},
+                {Top, {fT, FT}}
+            }
+            // Map[Apply[Function[{side, points},
+                GetBoundaryAction[
+                    GetGoalFunction[node, solution, tFlip, cache],
+                    side, points, dropLength[node]
+                ] // Unevaluated
+                // ReapCache[cacheF, cacheT]
+                // ({#, side}&
+                    // ReplaceAt[{
+                        Top :> Sow[cacheT, "CacheT"],
+                        Right :> Sow[cacheF, "CacheF"]
+                    }, {(*UnwrapFunction:*)1, 2}]
+                ) // First
+                // {side, #}&
+            ]]]
+        ) (*// Echo[#, {ft, fT, Ft, FT}]&*)
+    ];
 
     actions
     // Partition[#, 2]&
-    // Map[FirstCase[{"Split", splitFunction_}:> splitFunction]]
+    // Map[FirstCase[{side_, {"Split", splitFunction_}}:> {side, splitFunction}]]
     // Replace[{_?MissingQ, _?MissingQ} /; (
         actions
-        // MemberQ[{"TakeZero", _}]
+        // MemberQ[{side_, {"TakeZero", _}}]
     ):> (
-        FirstCase[actions, {"SplitIfZeros", splitFunctions_} :> (
-            splitFunctions
+        FirstCase[actions, {side_, {"SplitIfZeros", splitFunctions_}} :> (
+            {{side, Midpoint}, {side, splitFunctions}}
+            // If[side // MatchQ[Bottom|Top],
+                Identity, Reverse
+            ]
         ), {Missing["NotFound"], Missing["NotFound"]}]
     )]
     // Replace[{
         {_?MissingQ, _?MissingQ} :> (
             {ft, FT} -> connectBoundaryZeros[actions]
         ),
-        {splitFunction_, _?MissingQ} :> (
+        {{side_, splitFunction_}, _?MissingQ} :> Block[
+            {
+                cacheF, cacheT
+            },
+
             {fc, Fc} = (
                 {{ft, fT}, {Ft, FT}}
-                // Map[splitFunction /* (calcSamplePoint[node, solution, tFlip, #]&)]
+                // Map[splitFunction]
+                // MapAt[
+                    calcSamplePoint[node, solution, tFlip, #]&,
+                    If[side === Left, 2, 1]
+                ]
             );
             mergeZerosT[
-                findZeroBoundaries[{ft, fc, Ft, Fc}],
-                findZeroBoundaries[{fc, fT, Fc, FT}]
+                findZeroBoundaries[{ft, fc, Ft, Fc}, "Cache" -> cache]
+                // Unevaluated // ReapCache[cacheF, cacheT],
+                findZeroBoundaries[{fc, fT, Fc, FT}, "Cache" -> Join[cache, cacheT]]
             ]
-        ),
-        {_?MissingQ, splitFunction_} :> (
+        ],
+        {_?MissingQ, {side_, splitFunction_}} :> Block[
+            {
+                cacheF, cacheT
+            },
+
             {ct, cT} = (
                 {{ft, Ft}, {fT, FT}}
-                // Map[splitFunction /* (calcSamplePoint[node, solution, tFlip, #]&)]
+                // Map[splitFunction]
+                // MapAt[
+                    calcSamplePoint[node, solution, tFlip, #]&,
+                    If[side === Bottom, 2, 1]
+                ]
             );
             mergeZerosF[
-                findZeroBoundaries[{ft, fT, ct, cT}],
-                findZeroBoundaries[{ct, cT, Ft, FT}]
+                findZeroBoundaries[{ft, fT, ct, cT}, "Cache" -> cache]
+                // Unevaluated // ReapCache[cacheF, cacheT],
+                findZeroBoundaries[{ct, cT, Ft, FT}, "Cache" -> Join[cache, cacheF]]
             ]
-        ),
-        {splitFunctionT_, splitFunctionF_} :> (
+        ],
+        {{sideT_, splitFunctionT_}, {sideF_, splitFunctionF_}} :> Block[
+            {
+                cacheF1, cacheF2, cacheT
+            },
+
             {fc, Fc} = (
                 {{ft, fT}, {Ft, FT}}
-                // Map[splitFunctionT /* (calcSamplePoint[node, solution, tFlip, #]&)]
+                // Map[splitFunctionT]
+                // MapAt[
+                    calcSamplePoint[node, solution, tFlip, #]&,
+                    Replace[sideT, {Left -> 2, Right -> 1, _ -> All}]
+                ]
             );
             {ct, cT, cc} = (
                 {{ft, Ft}, {fT, FT}, {fc, Fc}}
-                // Map[splitFunctionF /* (calcSamplePoint[node, solution, tFlip, #]&)]
+                // Map[splitFunctionF]
+                // MapAt[
+                    calcSamplePoint[node, solution, tFlip, #]&,
+                    Replace[sideT, {Bottom -> {{2}, {3}}, Top -> {{1}, {3}}, _ -> All}]
+                ]
             );
 
             mergeZerosF[
                 mergeZerosT[
-                    findZeroBoundaries[{ft, fc, ct, cc}],
-                    findZeroBoundaries[{fc, fT, cc, cT}]
+                    findZeroBoundaries[{ft, fc, ct, cc}, "Cache" -> cache]
+                    // Unevaluated // ReapCache[cacheF1, cacheT],
+                    findZeroBoundaries[{fc, fT, cc, cT}, "Cache" -> Join[cache, cacheT]]
+                    // Unevaluated // ReapCache[cacheF2, cacheT]
                 ] // SowSampleList,
                 mergeZerosT[
-                    findZeroBoundaries[{ct, cc, Ft, Fc}],
-                    findZeroBoundaries[{cc, cT, Fc, FT}]
+                    findZeroBoundaries[{ct, cc, Ft, Fc}, "Cache" -> Join[cache, cacheF1]]
+                    // Unevaluated // ReapCache[cacheF1, cacheT],
+                    findZeroBoundaries[{cc, cT, Fc, FT}, "Cache" -> Join[cache, cacheF2, cacheT]]
                 ] // SowSampleList
             ]
-        )
+        ]
     }] // SowSampleList
 ]
 
 
-getGoalFunction[node_DRNode, solution_Association, tFlip_Association][
-    fixedCayley_?NumericQ, isTargetFixed_?BooleanQ] := With[
-    {
-        cayleyLengthSlot = (
-            {(*uncaptured slot:*)Slot[1], fixedCayley}
-            // If[isTargetFixed,
-                Identity,
-                Reverse
-            ]
-            // Apply[{
-                node["FreeCayley"]
-                // Replace[{
-                    {firstFree_, ___} :> (firstFree -> #1),
-                    {} -> (Nothing)
-                }],
-                node["TargetCayley"] -> #2
-            }&]
-        )
-    },
-
-    Function[realizeNode[node, solution, tFlip, cayleyLengthSlot // Association]]
-    /* Replace[{
-        coordinates_Association :> dropDiff[node, coordinates],
-        err_ :> (Echo[err, "Unknown Result"]; Abort[])
-    }]
-]
 SowSampleList := (
     If[$SowSampleList, ((*AppendTo[t`SampleList, #];*) Sow[#, "SampleList"])&, Identity]
 )
 
 
-fitGoalFunction[goalFunction_, {min_, max_}] := Block[
+GetGoalFunction[node_DRNode, solution_Association, tFlip_Association, cache_][
+    side:(Left|Bottom|Top|Right), fixedCayley_?NumericQ] := Block[
     {
-        samples = Subdivide[min, max, 3],
-        designMatrix, responseVec
+        (*uncaptured slot:*) runningCayley$, cayleySlot, sowFunction
     },
 
-    designMatrix = (
-        samples
-        // Map[#^Range[3]& /* Prepend[1]]
-        // NestWhile[Take[#, All, {1, -2}]&, #, Less[MatrixRank, First /* Length] /* Through]&
-    );
-    responseVec = samples // Map[goalFunction];
+    cayleySlot = {fixedCayley, runningCayley$}
+        // If[side // MatchQ[Left|Right],
+            Identity,
+            Reverse
+        ];
 
     With[
         {
-            body = (
-                Slot[1]^Range[3]
-                // Prepend[1]
-                // Apply[LinearModelFit[{designMatrix, responseVec}]["Function"]]
-            )
+            pointSlot = cayleySlot // Point,
+            cayleyLengthSlot = cayleySlot
+                // Apply[{
+                    node["FreeCayley"]
+                    // Replace[{
+                        {firstFree_, ___} :> (firstFree -> #1),
+                        {} -> (Nothing)
+                    }],
+                    node["TargetCayley"] -> #2
+                }&]
         },
-        body&
+
+        With[
+            {
+                sowDiff = Replace[side, {
+                    Top :> ((Sow[pointSlot -> #, "CacheT"] // Last)&),
+                    Right :> ((Sow[pointSlot -> #, "CacheF"] // Last)&),
+                    _ -> Identity
+                }]
+            },
+
+            Function[{runningCayley},
+                Lookup[cache, pointSlot,
+                    realizeNode[node, solution, tFlip, cayleyLengthSlot // Association]
+                    // Replace[{
+                        coordinates_Association :> (
+                            dropDiff[node, coordinates]
+                        ),
+                        err_ :> (Echo[err, "Unknown Result"]; Abort[])
+                    }]
+                    // sowDiff,
+                    ($SampleReuses++;#)&
+                ]
+            ]
+        ]
     ]
 ]
+
+
+FitGoalFunction[goalFunction_, {{start_, startDiff_}, {end_, endDiff_}}, order_Integer:3] := (
+    If[start == end,
+        If[# == start, startDiff, Indeterminate]&,
+        Subdivide[start, end, Max[order, 1]]
+        // Take[#, {2, 3}]&
+        // Map[{#, goalFunction[#]}&]
+        // Apply[{{start, startDiff}, ##, {end, endDiff}}&]
+        // Interpolation[#, InterpolationOrder -> order]&
+    ]
+)
 
 
 $FakeZeroTolerance = 0.05
 
 
-getBoundaryAction[goalFunctionGetter_, side:(Left|Bottom|Top|Right), points:{_Point, _Point}, targetDrop_?NumericQ] := Block[
+GetBoundaryAction[goalFunctionGetter_, side:(Left|Bottom|Top|Right),
+        points:{_Point, _Point}, targetDrop_?NumericQ] := Block[
     {
         fixedIndex = If[side // MatchQ[Left|Right], 1, 2],
-        dropDiffs =  Part[points, All, UnwrapPoint, -1],
-        fixedCayley, range, goalFunction, fittingFunction
+        dropDiffs = Part[points, All, UnwrapPoint, -1],
+        goalFunction, fixedCayley, endpoints, range, fittingFunction
     },
 
     fixedCayley = Part[points, 1, UnwrapPoint, fixedIndex];
     range = Part[points, All, UnwrapPoint, 3 - fixedIndex];
-    goalFunction = goalFunctionGetter[fixedCayley, (*isTargetFixed=*)fixedIndex == 2];
-    fittingFunction = fitGoalFunction[goalFunction, range];
+    goalFunction = goalFunctionGetter[side, fixedCayley];
+    endpoints = Part[Part[points, All, UnwrapPoint, {3 - fixedIndex, 3}]];
+    fittingFunction = FitGoalFunction[goalFunction, endpoints] (*// Echo[#, "FittingFunction"]&*);
+    (
+        range
+        // Apply[Subdivide[##, 3]&]
+        // Take[#, {2, 3}]&
+        // Map[
+            {
+                Identity,
+                fittingFunction
+            } /* Through
+            /* Insert[fixedCayley, fixedIndex]
+            /* Point
+        ]
+        // (# -> {})&
+        // SowSampleList
+    );
 
     If[(dropDiffs // Apply[Times]) <= 0,
         With[
