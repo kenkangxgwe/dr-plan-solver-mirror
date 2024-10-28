@@ -177,19 +177,25 @@ EdgeColorMap = <|
 |>
 
 
-HighlightNode[node_DRNode] := Module[
+Options[HighlightNode] = {
+    "ShowRootGraphQ" -> True
+}
+
+
+HighlightNode[node_DRNode, o:OptionsPattern[]] := Module[
     {
+        showRootGraphQ = OptionValue["ShowRootGraphQ"],
         graph = node["Graph"], rootgraph = node["Root"]["Graph"],
         edgeStyle
     },
 
     edgeStyle = Style[#, EdgeColorMap[PropertyValue[{rootgraph, #}, "EdgeType"]]]& /@ EdgeList[graph];
     HighlightGraph[
-        rootgraph,
+        If[showRootGraphQ, rootgraph, Subgraph[rootgraph, graph]],
         EdgeList[node["Graph"]],
         GraphHighlightStyle -> "DehighlightFade",
         ImageSize -> 400
-	  ]
+    ]
 ]
 
 
