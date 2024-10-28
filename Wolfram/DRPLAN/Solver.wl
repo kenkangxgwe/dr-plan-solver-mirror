@@ -1480,6 +1480,36 @@ BoundarySampleQ[boundaries_List][range_] := With[
 ]
 
 
+$SampleReuses = 0
+
+
+LookupOrCalcSamplePoint[node_, solution_, tFlip_, cache_][point_Point] := (
+    Lookup[cache, Delete[point, {UnwrapPoint, 3}],
+        calcSamplePoint[node, solution, tFlip, point],
+        ReplacePart[point, {UnwrapPoint, 3} -> ($SampleReuses++;#)]&
+    ]
+)
+
+
+SetAttributes[ReapCache, HoldAll]
+
+ReapCache[cacheF_, cacheT_][sowable_] := (
+    Reap[{
+        sowable,
+        (* Side effect should happen after evaluating sowable *)
+        cacheF = <||>,
+        cacheT = <||>
+    } // First, {"CacheF", "CacheT"}, (
+        Unevaluated[#1 = #2 // Apply[Association]]
+        // ReplaceAt[{"CacheF" :> cacheF, "CacheT" :> cacheT}, 1]
+    )&] // First
+)
+
+
+Options[QuadSampling] = {
+    "Cache" -> <||>
+}
+
 (*
     fT -- cT -- FT
     |     ||     |
@@ -1492,11 +1522,14 @@ BoundarySampleQ[boundaries_List][range_] := With[
 *)
 (quadSampling:QuadSampling[node_DRNode, solution_Association, tFlip_Association,
     dropDiffTolerance_?NumericQ, freeDistanceTolerance_?NumericQ, targetDistanceTolerance_?NumericQ,
-    freeBoundary_List, targetBoundary_List])[{ft_Point, fT_Point, Ft_Point, FT_Point}] := Block[
+    freeBoundary_List, targetBoundary_List])[
+        {ft_Point, fT_Point, Ft_Point, FT_Point}, o:OptionsPattern[]] := Block[
     {
         splitBottom, splitLeft, splitTop, splitRight,
-        ct, fc, cT, Fc, cc
+        ct, fc, cT, Fc, cc, cache
     },
+
+    {cache} = OptionValue[QuadSampling, {o}, {"Cache"}];
 
     {splitBottom, splitLeft, splitTop, splitRight} = (
         {{ft, Ft}, {ft, fT}, {fT, FT}, {Ft, FT}}
@@ -1523,40 +1556,81 @@ BoundarySampleQ[boundaries_List][range_] := With[
         ]&]]
     );
 
-    {ct, fc, cT, Fc, cc} = (
-        {{ft, Ft}, {ft, fT}, {fT, FT}, {Ft, FT}, {ft, FT}}
-        // Map[Midpoint /* (calcSamplePoint[node, solution, tFlip, #]&)]
-    );
+    If[splitBottom || splitTop,
+        {ct, cT} = {{ft, Ft}, {fT, FT}}
+            // Map[Midpoint /* LookupOrCalcSamplePoint[node, solution, tFlip, cache]];
+        Sow[Delete[cT, {UnwrapPoint, 3}] -> Part[cT, UnwrapPoint, 3], "CacheT"]
+    ];
+    If[splitLeft || splitRight,
+        {fc, Fc} = {{ft, fT}, {Ft, FT}}
+            // Map[Midpoint /* LookupOrCalcSamplePoint[node, solution, tFlip, cache]];
+        Sow[Delete[Fc, {UnwrapPoint, 3}] -> Part[Fc, UnwrapPoint, 3], "CacheF"]
+    ];
+    If[(splitBottom || splitTop) && (splitLeft || splitRight),
+        cc = {ft, FT} // Midpoint // LookupOrCalcSamplePoint[node, solution, tFlip, cache]
+    ];
 
     {splitBottom || splitTop, splitLeft || splitRight}
     // Replace[{
-        {False, False} :> (FindZeroBoundaries[node, solution, tFlip][{ft, fT, Ft, FT}]),
-        {True, False} :> (
+        {False, False} :> Block[
+            {
+                cacheT1, cacheT2
+            },
+
+            {
+                FindZeroBoundaries[node, solution, tFlip][{ft, fT, Ft, FT}, "Cache" -> cache]
+                    // Unevaluated // ReapCache[cacheF, cacheT],
+                Sow[cacheF, "CacheF"],
+                Sow[cacheT, "CacheT"]
+            } // First
+        ],
+        {True, False} :> Block[
+            {
+                resultf, resultF, cacheF, cacheT1, cacheT2
+            },
+
+            resultf = quadSampling[{ft, fT, ct, cT}, "Cache" -> cache]
+                // Unevaluated // ReapCache[cacheF, cacheT1];
+            resultF = quadSampling[{ct, cT, Ft, FT}, "Cache" -> Join[cache, cacheF]]
+                // Unevaluated // ReapCache[cacheF, cacheT2];
+            Sow[cacheF, "CacheF"];
+            Sow[Join[cacheT1, cacheT2], "CacheT"];
+            mergeZerosF[resultf, resultF] // SowSampleList
+        ],
+        {False, True} :> Block[
+            {
+                resultt, resultT, cacheT, cacheF1, cacheF2
+            },
+
+            resultt = quadSampling[{ft, fc, Ft, Fc}, "Cache" -> cache]
+                // Unevaluated // ReapCache[cacheF1, cacheT];
+            resultT = quadSampling[{fc, fT, Fc, FT}, "Cache" -> Join[cache, cacheT]]
+                // Unevaluated // ReapCache[cacheF2, cacheT];
+            Sow[cacheT, "CacheT"];
+            Sow[Join[cacheF1, cacheF2], "CacheF"];
+            mergeZerosT[resultt, resultT, "QuadSampling" -> quadSampling] // SowSampleList
+        ],
+        {True, True} :> Block[
+            {
+                resultft, resultfT, resultFt, resultFT,
+                cacheT1, cacheT2, cacheF1, cacheF2
+            },
+
+            resultft = quadSampling[{ft, fc, ct, cc}, "Cache" -> cache]
+                // Unevaluated // ReapCache[cacheF1, cacheT1];
+            resultfT = quadSampling[{fc, fT, cc, cT}, "Cache" -> Join[cache, cacheT1]]
+                // Unevaluated // ReapCache[cacheF2, cacheT1];
+            resultFt = quadSampling[{ct, cc, Ft, Fc}, "Cache" -> Join[cache, cacheF1]]
+                // Unevaluated // ReapCache[cacheF1, cacheT2];
+            resultFT = quadSampling[{cc, cT, Fc, FT}, "Cache" -> Join[cache, cacheF2, cacheT2]]
+                // Unevaluated // ReapCache[cacheF2, cacheT2];
+            Sow[Join[cacheF1, cacheF2], "CacheF"];
+            Sow[Join[cacheT1, cacheT1], "CacheT"];
             mergeZerosF[
-                quadSampling[{ft, fT, ct, cT}],
-                quadSampling[{ct, cT, Ft, FT}]
+                mergeZerosT[resultft, resultfT, "QuadSampling" -> quadSampling] // SowSampleList,
+                mergeZerosT[resultFt, resultFT, "QuadSampling" -> quadSampling] // SowSampleList
             ] // SowSampleList
-        ),
-        {False, True} :> (
-            mergeZerosT[
-                quadSampling[{ft, fc, Ft, Fc}],
-                quadSampling[{fc, fT, Fc, FT}],
-                "QuadSampling" -> quadSampling
-            ] // SowSampleList
-        ),
-        {True, True} :> (
-            mergeZerosT[
-                mergeZerosF[
-                    quadSampling[{ft, fc, ct, cc}],
-                    quadSampling[{ct, cc, Ft, Fc}]
-                ] // SowSampleList,
-                mergeZerosF[
-                    quadSampling[{fc, fT, cc, cT}],
-                    quadSampling[{cc, cT, Fc, FT}]
-                ] // SowSampleList,
-                "QuadSampling" -> quadSampling
-            ] // SowSampleList
-        )
+        ]
     }]
 ]
 
