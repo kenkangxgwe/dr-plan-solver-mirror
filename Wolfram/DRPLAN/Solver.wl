@@ -1425,20 +1425,35 @@ KdTreeSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] 
     ];
     targetDomain = domain[node["TargetCayley"]];
     {freeDomain, targetDomain}
-    // Apply[Outer[List/*Point, ##, {Missing["NotSolved"]}]&]
-    // Flatten
-    // Map[calcSamplePoint[node, solution, tFlip, #]&]
     // QuadSampling[node, solution, tFlip,
         node["Root"]["PlanShortestEdge"] / $KdSamplingDivider,
         EuclideanDistance@@freeDomain / $KdSamplingDivider,
         EuclideanDistance@@targetDomain / $KdSamplingDivider
     ]
+    // Last
     // Map[FinalizeSol]
     // If[node["FreeCayley"] =!= {},
         Select[Chop[EuclideanDistance[First[#], Last[#]]] != 0&],
         Identity
     ]
     // MapIndexed[interpZeros[node, nodeSolution, Part[#1, All, 1], Part[#1, All, 2], First[#2]]&]
+    (* // Replace[_Rule :> (Echo[{node, nodeSolution}]; Abort[])] *)
+]
+
+
+(*
+    An overload of QuadSampling to calculate {ft, fT, Ft, FT} from {{f, F}, {t, T}}.
+*)
+(quadSampling:QuadSampling[node_DRNode, solution_Association, tFlip_Association, ___])[
+        {{f_, F_}, {t_, T_}}] := (
+    {{f, F}, {t, T}}
+    // Apply[Outer[List/*Point, ##, {Missing["NotSolved"]}]&]
+    // Flatten
+    // Map[calcSamplePoint[node, solution, tFlip, #]&]
+    // quadSampling
+)
+
+
 ]
 
 
@@ -1485,35 +1500,32 @@ KdTreeSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] 
 
     {splitBottom || splitTop, splitLeft || splitRight}
     // Replace[{
-        {False, False} :> (findZeroBoundaries[node, solution, tFlip][{ft, fT, Ft, FT}]),
+        {False, False} :> (FindZeroBoundaries[node, solution, tFlip][{ft, fT, Ft, FT}]),
         {True, False} :> (
             mergeZerosF[
                 quadSampling[{ft, fT, ct, cT}],
                 quadSampling[{ct, cT, Ft, FT}]
-            ]
-            // (Sow[{ft, FT} -> #, "SampleList"]; #)&
+            ] // SowSampleList
         ),
         {False, True} :> (
             mergeZerosT[
                 quadSampling[{ft, fc, Ft, Fc}],
-                quadSampling[{fc, fT, Fc, FT}]
-            ]
-            // (Sow[{ft, FT} -> #, "SampleList"]; #)&
+                quadSampling[{fc, fT, Fc, FT}],
+                "QuadSampling" -> quadSampling
+            ] // SowSampleList
         ),
         {True, True} :> (
             mergeZerosT[
                 mergeZerosF[
                     quadSampling[{ft, fc, ct, cc}],
                     quadSampling[{ct, cc, Ft, Fc}]
-                ]
-                // (Sow[{ft, Fc} -> #, "SampleList"]; #)&,
+                ] // SowSampleList,
                 mergeZerosF[
                     quadSampling[{fc, fT, cc, cT}],
                     quadSampling[{cc, cT, Fc, FT}]
-                ]
-                // (Sow[{fc, FT} -> #, "SampleList"]; #)&
-            ]
-            // (Sow[{ft, FT} -> #, "SampleList"]; #)&
+                ] // SowSampleList,
+                "QuadSampling" -> quadSampling
+            ] // SowSampleList
         )
     }]
 ]
@@ -1573,7 +1585,7 @@ connectBoundaryZeros[actions_List] := Block[
 ]
 
 
-(quadSampling:findZeroBoundaries[node_DRNode, solution_Association, tFlip_Association])[
+(findZeroBoundaries:FindZeroBoundaries[node_DRNode, solution_Association, tFlip_Association])[
     {ft_Point, fT_Point, Ft_Point, FT_Point}] := Block[
     {
         fc, Fc, ct, cT, cc,
@@ -1606,7 +1618,7 @@ connectBoundaryZeros[actions_List] := Block[
     )]
     // Replace[{
         {_?MissingQ, _?MissingQ} :> (
-            connectBoundaryZeros[actions]
+            {ft, FT} -> connectBoundaryZeros[actions]
         ),
         {splitFunction_, _?MissingQ} :> (
             {fc, Fc} = (
@@ -1614,8 +1626,8 @@ connectBoundaryZeros[actions_List] := Block[
                 // Map[splitFunction /* (calcSamplePoint[node, solution, tFlip, #]&)]
             );
             mergeZerosT[
-                quadSampling[{ft, fc, Ft, Fc}],
-                quadSampling[{fc, fT, Fc, FT}]
+                findZeroBoundaries[{ft, fc, Ft, Fc}],
+                findZeroBoundaries[{fc, fT, Fc, FT}]
             ]
         ),
         {_?MissingQ, splitFunction_} :> (
@@ -1624,8 +1636,8 @@ connectBoundaryZeros[actions_List] := Block[
                 // Map[splitFunction /* (calcSamplePoint[node, solution, tFlip, #]&)]
             );
             mergeZerosF[
-                quadSampling[{ft, fT, ct, cT}],
-                quadSampling[{ct, cT, Ft, FT}]
+                findZeroBoundaries[{ft, fT, ct, cT}],
+                findZeroBoundaries[{ct, cT, Ft, FT}]
             ]
         ),
         {splitFunctionT_, splitFunctionF_} :> (
@@ -1638,21 +1650,18 @@ connectBoundaryZeros[actions_List] := Block[
                 // Map[splitFunctionF /* (calcSamplePoint[node, solution, tFlip, #]&)]
             );
 
-            mergeZerosT[
-                mergeZerosF[
-                    quadSampling[{ft, fc, ct, cc}],
-                    quadSampling[{ct, cc, Ft, Fc}]
-                ]
-                // (Sow[{ft, Fc} -> #, "SampleList"]; #)&,
-                mergeZerosF[
-                    quadSampling[{fc, fT, cc, cT}],
-                    quadSampling[{cc, cT, Fc, FT}]
-                ]
-                // (Sow[{fc, FT} -> #, "SampleList"]; #)&
+            mergeZerosF[
+                mergeZerosT[
+                    findZeroBoundaries[{ft, fc, ct, cc}],
+                    findZeroBoundaries[{fc, fT, cc, cT}]
+                ] // SowSampleList,
+                mergeZerosT[
+                    findZeroBoundaries[{ct, cc, Ft, Fc}],
+                    findZeroBoundaries[{cc, cT, Fc, FT}]
+                ] // SowSampleList
             ]
         )
-    }]
-    // (Sow[{ft, FT} -> #, "SampleList"]; #)&
+    }] // SowSampleList
 ]
 
 
@@ -1841,228 +1850,552 @@ findZeros[function_, range:{min_, max_}] := Block[
 (* mergeZeros[node_DRNode, solution_Association, tFlip_Association, fixedCayley_?NumericQ,
     orientation:(Right|Top), {firstSols_List, secondSols_List}] := Join[firstSols, secondSols] // Flatten // DeleteDuplicates *)
 
-mergeZerosF[firstSols_List, secondSols_List] := Block[
+mergeZerosF[{ft_, cT_} -> solsf_List, {ct_, FT_} -> solsF_List] := (Block[
     {
-        matchedIndices = matchIntervals[
-            firstSols
-            // MapIndexed[List /* Replace[{
-                {KeyValuePattern["Out" -> {Right, _, interval_}], {index_}} :> (interval -> index),
-                _ -> Nothing
-            }]] // Merge[Identity] // KeySort,
-            secondSols // MapIndexed[List /* Replace[{
-                {KeyValuePattern["In" -> {Left, _, interval_}], {index_}} :> (interval -> index),
-                _ -> Nothing
-            }]] // Merge[Identity] // KeySort
-        ] // Reap // Last[Last[#], {}]&
+        matchingIntervals = (
+            d`firstSols = ({ft, cT} -> solsf);
+            d`secondSols = ({ct, FT} -> solsF);
+            Join[
+                solsf
+                // MapIndexed[List]
+                // Cases[{KeyValuePattern["Out" -> {Right, {_, y_, _}, interval_}], {index_}} :>
+                    {y, interval, 1} -> {1, index}
+                ] // Merge[Identity],
+                solsF
+                // MapIndexed[List]
+                // Cases[{KeyValuePattern["In" -> {Left, {_, y_, _}, interval_}], {index_}} :>
+                    {y, interval, 2} -> {2, index}
+                ] // Merge[Identity]
+            ] // KeySort
+        )
     },
 
-	Join[
-        Complement[firstSols // Length // Range, Part[matchedIndices, All, 2, 1] // Catenate]
-        // Part[firstSols, #]&,
-        Complement[secondSols // Length // Range, Part[matchedIndices, All, 2, 2] // Catenate]
-        // Part[secondSols, #]& ,
-        matchedIndices
-        // Map[Apply[mergeSols[#1, {Part[firstSols, First[#2]], Part[secondSols, Last[#2]]}]&]]
-        // Catenate
+	{ft, FT} -> Join[
+        solsf // DeleteCases[KeyValuePattern["Out" -> {Right, __}]],
+        solsF // DeleteCases[KeyValuePattern["In" -> {Left, __}]],
+        matchingIntervals
+        // Keys
+        // matchIntervals
+        // Map[Apply[Function[{tuple1, tuple2},
+            Table[
+                mergeSols[
+                    {
+                        index1
+                        // Replace[{fOrF_, index_} :> (
+                            Part[{solsf, solsF}, fOrF, index]
+                        )],
+                        index2
+                        // Replace[{fOrF_, index_} :> (
+                            Part[{solsf, solsF}, fOrF, index]
+                        )]
+                    }
+                    // If[First[index1] == 1, Identity, Reverse]
+                ],
+                {index1, matchingIntervals[tuple1] // Replace[_?MissingQ -> {{}}]},
+                {index2, matchingIntervals[tuple2] // Replace[_?MissingQ -> {{}}]}
+            ] // Catenate
+        ]]] // Catenate
     ]
-]
+] // Unevaluated // Check[#, Echo[{{ft, cT} -> solsf, {ct, FT} -> solsF}], mergeSols::mono]&)
 
 
-mergeZerosT[firstSols_List, secondSols_List] := Block[
+mergeZerosT::noconn = "An isolated zero found at `1`"
+mergeZerosT::detectgap = "Need to resample using split points `1` for range `2`"
+
+Options[mergeZerosT] = {
+    "QuadSampling" -> None
+}
+
+mergeZerosT[{ft_, Fc_} -> solst_List, {fc_, FT_} -> solsT_List, o:OptionsPattern[]] := (Block[
     {
-        matchedIndices1, matchedIndices2
+        quadSampling, matchingIntervals, matchedIndices,
+        splitPoints, originalSplitPoints
     },
+
+    quadSampling = OptionValue[mergeZerosT, {o}, "QuadSampling"];
+    d`firstSols = ({ft, Fc} -> solst);
+    d`secondSols = ({fc, FT} -> solsT);
 
     (* first out, second in *)
-    matchedIndices1 = matchIntervals[
-        firstSols
-        // MapIndexed[List /* Replace[{
-            {KeyValuePattern["Out" -> {Top, _, interval_}], {index_}} :> (interval -> index),
-            _ -> Nothing
-        }]] // Merge[Identity] // KeySort,
-        secondSols
-        // MapIndexed[List /* Replace[{
-            {KeyValuePattern["In" -> {Bottom, _, interval_}], {index_}} :> (interval -> index),
-            _ -> Nothing
-        }]] // Merge[Identity] // KeySort
-    ] // Reap // Last[Last[#], {}]&;
+    matchingIntervals = Join[
+        solst
+        // MapIndexed[List]
+        // {
+            Cases[{KeyValuePattern[(dir:"In") -> {Top, {x_, __}, interval_}], {index_}} :>
+                {x, interval, 1} -> {1, index, dir}
+            ],
+            Cases[{KeyValuePattern[(dir:"Out") -> {Top, {x_, __}, interval_}], {index_}} :>
+                {x, interval, 1} -> {1, index, dir}
+            ]
+        } // Through
+        // Catenate
+        // Merge[Identity],
+        solsT
+        // MapIndexed[List]
+        // {
+            Cases[{KeyValuePattern[(dir:"In") -> {Bottom, {x_, __}, interval_}], {index_}} :>
+                {x, interval, 2} -> {2, index, dir}
+            ],
+            Cases[{KeyValuePattern[(dir:"Out") -> {Bottom, {x_, __}, interval_}], {index_}} :>
+                {x, interval, 2} -> {2, index, dir}
+            ]
+        } // Through
+        // Catenate
+        // Merge[Identity]
+    ] // KeySort;
 
-    (* second out, first in *)
-    matchedIndices2 = matchIntervals[
-        secondSols
-        // MapIndexed[List /* Replace[{
-            {KeyValuePattern["Out" -> {Bottom, _, interval_}], {index_}} :> (interval -> index),
-            _ -> Nothing
-        }]] // Merge[Identity] // KeySort,
-        firstSols
-        // MapIndexed[List /* Replace[{
-            {KeyValuePattern["In" -> {Top, _, interval_}], {index_}} :> (interval -> index),
-            _ -> Nothing
-        }]] // Merge[Identity] // KeySort
-    ] // Reap // Last[Last[#], {}]&;
+    splitPoints = matchingIntervals
+    // Keys
+    // matchIntervals
+    // Cases[{{_, {f_, F_}, tOrT_}, {}} :> (
+        (3 - tOrT) -> {f, F}
+    )] // Merge[Catenate];
 
-	Join[
-        Complement[
-            firstSols // Length // Range,
-            Join[
-                Part[matchedIndices1, All, 2, 1],
-                Part[matchedIndices2, All ,2, 2]
-            ] // Catenate // DeleteDuplicates
-        ] // Part[firstSols, #]&,
-        Complement[
-            secondSols // Length // Range,
-            Join[
-                Part[matchedIndices1, All, 2, 2],
-                Part[matchedIndices2, All ,2, 1]
-            ] // Catenate // DeleteDuplicates
-        ] // Part[secondSols, #]&,
-        mergeIndices[firstSols, secondSols][matchedIndices1, matchedIndices2]
-        // Reap // Last[Last[#], {}]&
+    If[splitPoints =!= <||> && quadSampling =!= None,
+        originalSplitPoints = matchingIntervals
+        // Keys
+        // matchIntervals
+        // Cases[{{_, {f1_, F1_}, tOrT1_}, {_, {f2_, F2_}, tOrT2_}} :> <|
+            tOrT1 -> {f1, F1},
+            tOrT2 -> {f2, F2}
+        |>] // Merge[Catenate];
+        Return[
+            mergeZerosT[
+                splitPoints[1]
+                // Replace[{
+                    (_?MissingQ | {}) :> ({ft, Fc} -> solst),
+                    points_ :> (
+                        Join[points, Lookup[originalSplitPoints, 1, {}]]
+                        // Sort
+                        // Prepend[Part[ft, UnwrapPoint, 1]]
+                        // Append[Part[FT, UnwrapPoint, 1]]
+                        // DeleteDuplicates
+                        // (Message[mergeZerosT::detectgap, #, {ft, Fc}];
+Echo[{OptionValue[mergeZerosT, {o}, "QuadSampling"], {ft, Fc} -> solst, {fc, FT} -> solsT}];
+Abort[];
+                         #)&
+                        // MovingMap[quadSampling[{#, Part[{ft, Fc}, All, UnwrapPoint, 2]}]&, #, 1]&
+                        // Fold[mergeZerosF]
+                    )
+                }],
+                splitPoints[2]
+                // Replace[{
+                    (_?MissingQ | {}) :> ({fc, FT} -> solsT),
+                    points_ :> (
+                        Join[points, Lookup[originalSplitPoints, 2, {}]]
+                        // DeleteMissing
+                        // Sort
+                        // Prepend[Part[ft, UnwrapPoint, 1]]
+                        // Append[Part[FT, UnwrapPoint, 1]]
+                        // DeleteDuplicates
+                        // (Message[mergeZerosT::detectgap, #, {fc, FT}];
+Echo[{OptionValue[mergeZerosT, {o}, "QuadSampling"], {ft, Fc} -> solst, {fc, FT} -> solsT}];
+Abort[];
+                         #)&
+                        // MovingMap[quadSampling[{#, Part[{fc, FT}, All, UnwrapPoint, 2]}]&, #, 1]&
+                        // Fold[mergeZerosF]
+                    )
+                }],
+                o
+            ]
+        ]
+    ];
+
+    matchedIndices = matchingIntervals
+    // Keys
+    // matchIntervals
+    // Replace[#, {
+        {tuple1_, {}} :> (
+            matchingIntervals[tuple1]
+            // Map[{#, {}}&]
+        ),
+        {tuple1_, tuple2_} :> (
+            Outer[
+                List,
+                matchingIntervals[tuple1],
+                matchingIntervals[tuple2],
+                1
+            ] // Catenate
+        )
+    }, {1}]& // Catenate;
+
+    d`matchedIndices = matchedIndices;
+
+	{ft, FT} -> Join[
+        solst // DeleteCases[KeyValuePattern[("In"|"Out") -> {Top, __}]],
+        solsT // DeleteCases[KeyValuePattern[("In"|"Out") -> {Bottom, __}]],
+        matchedIndices // mergeIndices[solst, solsT]
     ]
+] // Unevaluated // Check[#, Echo[{OptionValue[mergeZerosT, {o}, "QuadSampling"], {ft, Fc} -> solst, {fc, FT} -> solsT}], mergeSols::mono]&)
+
+
+matchIntervals::overlap = "Overlap ranges have been detected when merging `1` and `2`."
+
+matchIntervals = Function[{tuples},
+    tuples
+    // Fold[matchIntervalsImpl]
+    // Replace[error_?(Last[#] === False&) :> (Echo[error]; Abort[])]
+    // Replace[tuple:{_, _, _} :> (
+        Sow[{tuple, {}}, "matchIntervals"]
+    )]
+    // Unevaluated // Reap[#, "matchIntervals"]&
+    // Last // Last[#, {}]&
+]
+
+matchIntervalsImpl[{x1_, interval1_, tOrT1_, matchedQ_:False},
+        tuple2:{x2_, interval2_, tOrT2_}] := (
+    If[tOrT1 == tOrT2 &&
+            (RangeIntersection[interval1, interval2] // Apply[Less]),
+        Message[matchIntervals::overlap, interval1, interval2];
+        Echo[{d`firstSols, d`secondSols}];
+        Abort[];
+    ];
+
+    If[(Between[x1, interval2] || Between[x2, interval1]) && tOrT1 != tOrT2,
+        Sow[{{x1, interval1, tOrT1}, tuple2}, "matchIntervals"];
+        tuple2 // Append[(*matchedQ:*)True],
+        If[!matchedQ, Sow[{{x1, interval1, tOrT1}, {}}, "matchIntervals"]];
+        tuple2
+    ]
+)
+
+
+mergeIndices::unmatched = "Unmatched solutions during merging `1`"
+
+mergeIndices[sols1_List, sols2_List] := Function[{matchedIndices},
+    Fold[mergeIndicesImpl[sols1, sols2], <||>, matchedIndices]
+    // Replace[unmatched:Except[<||>] :> (
+        Echo[{unmatched, sols1, sols2, matchedIndices}];
+        Message[mergeIndices::unmatched, Part[unmatched, All, {Key["In"], Key["Out"]}]]
+    )]
+    // Unevaluated // Reap[#, "mergeIndices"]&
+    // Last // Last[#, {}]&
+    (* // Unevaluated
+    // Check[#, Echo[{sols1, sols2, resampleFunction, matchedIndices}];Abort[]]& *)
 ]
 
 
-matchIntervals[_?(SameAs[<||>]), _?(SameAs[<||>])] := Null
-
-matchIntervals[<|_ -> firstIndices_, rest___|>, _?(SameAs[<||>]), firstMatched_:False] := (
-    If[Not[firstMatched],
-        Sow[{1, {firstIndices, {}}}]
-    ];
-    matchIntervals[<|rest|>, <||>]
-)
-
-matchIntervals[_?(SameAs[<||>]), <|_ -> secondIndices_, rest___|>, _:False, secondMatched_:False] := (
-    If[Not[secondMatched],
-        Sow[{2, {{}, secondIndices}}]
-    ];
-    matchIntervals[<||>, <|rest|>]
-)
-
-matchIntervals[first:<|firstInterval_ -> firstIndices_, ___|>, second:<|secondInterval_ -> secondIndices_, ___|>,
-    firstMatched_:False, secondMatched_:False] := (
-    RangeIntersection[firstInterval, secondInterval]
-    // Replace[{
-        {Infinity, -Infinity} |
-        _?(Apply[EuclideanDistance]/*EqualTo[0]) :> If[Max[firstInterval] < Max[secondInterval],
-            If[Not[firstMatched],
-                Sow[{1, {firstIndices, {}}}]
-            ];
-            matchIntervals[Rest[first], second],
-            If[Not[secondMatched],
-                Sow[{2, {{}, secondIndices}}]
-            ];
-            matchIntervals[first, Rest[second]]
-        ],
-        _ :> (
-            Sow[{
-                If[{firstInterval, secondInterval}
-                    // Map[Apply[EuclideanDistance]]
-                    // Apply[Less],
-                    1,2
-                ],
-                {firstIndices, secondIndices}
-            }];
-            If[Max[firstInterval] < Max[secondInterval],
-                matchIntervals[Rest[first], second, False, True],
-                matchIntervals[first, Rest[second], True]
-            ]
-        )
-    }]
-)
-
-
-mergeIndices[firstSols_List, secondSols_List, prevUps_Association:<||>, prevDowns_Association:<||>][{}, {}] = Null;
-
-mergeIndices[firstSols_List, secondSols_List, prevUps_Association:<||>, prevDowns_Association:<||>][ups_List, downs_List] := Block[
+mergeIndicesImpl[solst_List, solsT_List][incompleteSols_Association,
+        {{tOrT1_, index1_, dir1_}, {tOrT2_, index2_, dir2_}|{}}] := Block[
     {
-        selectUpQ,
-        upIndex, outUpIndices, inUpIndices,
-        downIndex, outDownIndices, inDownIndices,
-        inSols, newSols
+        (*
+            Gets the merging solution from either:
+            1. original solutions, or
+            2. previously merged but incomplete solutions
+        *)
+        solsIn1 = {Part[{solst, solsT}, tOrT1, index1]},
+        (* SetDelayed here since sols2 may not be used *)
+        solsIn2 := {Part[{solst, solsT}, tOrT2, index2]},
+        solsOut1 = Lookup[incompleteSols, Key[{tOrT1, index1}], {Part[{solst, solsT}, tOrT1, index1]}],
+        (* SetDelayed here since sols2 may not be used *)
+        solsOut2 := Lookup[incompleteSols, Key[{tOrT2, index2}], {Part[{solst, solsT}, tOrT2, index2]}],
+        (*
+            If the merged solution is incomplete, adds it to the association.
+            Otherwise, deletes the previous incomplete one if exists.
+            These are actions to be applied to `incompleteSols`.
+        *)
+        sowOnly = (Sow[#, "mergeIndices"]; Identity)&,
+        delete1 = Delete[Key[{tOrT1, index1}]],
+        delete2 = Delete[Key[{tOrT2, index2}]],
+        appendOrSow1 = Function[{newSol},
+            If[Part[newSol, Key["Out"], 1] === Part[{Top, Bottom}, tOrT1],
+                Merge[Catenate][{#, {tOrT1, index1} -> {newSol}}]&,
+                Sow[newSol, "mergeIndices"];
+                Delete[Key[{tOrT1, index1}]]
+            ]
+        ],
+        appendOrSow2 = Function[{newSol},
+            If[Part[newSol, Key["Out"], 1] === Part[{Top, Bottom}, tOrT2],
+                Merge[Catenate][{#, {tOrT2, index2} -> {newSol}}]&,
+                Sow[newSol, "mergeIndices"];
+                Delete[Key[{tOrT2, index2}]]
+            ]
+        ]
     },
 
-    selectUpQ = Less[
-        If[Length[ups] > 0,
-            {upIndex, {outUpIndices, inUpIndices}} = First[ups];
-            If[upIndex == 1,
-                Part[firstSols, First[outUpIndices], Key["Out"]],
-                Part[secondSols, First[inUpIndices], Key["In"]]
-            ] // Part[#, 2, 1]&,
-            Infinity
-        ],
-        If[Length[downs] > 0,
-            {downIndex, {outDownIndices, inDownIndices}} = First[downs];
-            If[downIndex == 1,
-                Part[secondSols, First[outDownIndices], Key["Out"]],
-                Part[firstSols, First[inDownIndices], Key["In"]]
-            ] // Part[#, 2, 1]&,
-            Infinity
-        ]
-    ];
-
-    If[selectUpQ,
-        inSols = Part[secondSols, inUpIndices];
-        newSols = prevDowns[outUpIndices]
-            // Replace[_?MissingQ :> Part[firstSols, outUpIndices]]
-            // mergeSols[upIndex, {#, inSols}]&;
-        If[inUpIndices =!= {} && Part[inSols, 1, Key["Out"], 1] === Bottom,
-            Merge[{prevUps, <|inUpIndices -> newSols|>}, Catenate],
-            newSols // Map[Sow];
-            prevUps
-        ] // mergeIndices[firstSols, secondSols, #, prevDowns][Rest[ups], downs]&,
-        inSols = Part[firstSols, inDownIndices];
-        newSols = prevUps[outDownIndices]
-            // Replace[_?MissingQ :> Part[secondSols, outDownIndices]]
-            // mergeSols[downIndex, {#, inSols}]&;
-        If[inDownIndices =!= {} && Part[inSols, 1, Key["Out"], 1] === Top,
-            Merge[{prevDowns, <|inDownIndices -> newSols|>}, Catenate],
-            newSols // Map[Sow];
-            prevDowns
-        ] // mergeIndices[firstSols, secondSols, prevUps, #][ups, Rest[downs]]&
-    ]
-    /; (Length[ups] + Length[downs] > 0)
+    {dir1, dir2}
+    // Replace[{
+        {"In", "Out"} :> (
+            (* sol2 -> sol1 *)
+            Table[
+                mergeSols[{sol2, sol1}] // appendOrSow1,
+                {sol2, solsOut2}, {sol1, solsIn1}
+            ] // Catenate // Append[delete2]
+        ),
+        {"Out", "In"} :> (
+            (* sol1 -> sol2 *)
+            Table[
+                mergeSols[{sol1, sol2}] // appendOrSow2,
+                {sol1, solsOut1}, {sol2, solsIn2}
+            ] // Catenate // Append[delete1]
+        ),
+        {"In", "In"} :> (
+            (*
+                -> sol1
+                -> sol2
+            *)
+            Join[
+                Table[mergeSols[{{}, sol1}] // appendOrSow1, {sol1, solsIn1}],
+                Table[mergeSols[{{}, sol2}] // appendOrSow2, {sol2, solsIn2}]
+            ]
+        ),
+        {"Out", "Out"} :> (
+            (*
+                sol1 ->
+                sol2 ->
+            *)
+            Join[
+                Table[mergeSols[{sol1, {}}] // sowOnly, {sol1, solsOut1}],
+                Table[mergeSols[{sol2, {}}] // sowOnly, {sol2, solsOut2}],
+                {delete1, delete2}
+            ]
+        ),
+        {"Out"} :> (
+            Table[mergeSols[{sol1, {}}] // sowOnly, {sol1, solsOut1}]
+            // Append[delete1]
+        ),
+        {"In"} :> (
+            Table[mergeSols[{{}, sol1}] // appendOrSow1, {sol1, solsIn1}]
+        )
+    }] // Unevaluated
+    // Check[#, Echo[{{tOrT1, index1, dir1}, {tOrT2, index2, dir2}}, "tuples"];
+        Echo[incompleteSols, "incompleteSols"],
+        mergeSols::mono]&
+    // Prepend[incompleteSols]
+    // Fold[#2[#1]&]
 ]
 
 
-mergeSols[_, {{}, inSols:{__Association}}] := Table[
+quadResampling::unhandledCase = "The directions `1` of `2` are not known cases. Falling back to linear interpolation"
+
+quadResampling[quadSampling_QuadSampling, {f_, F_}, {t_, c_, T_}][
+        {dir1_, sol1:KeyValuePattern[dir1_ -> {side1_, _, {f1_, f2_}}]},
+        {dir2_, sol2:KeyValuePattern[dir2_ -> {side2_, _, {F1_, F2_}}]}
+    ] := Block[
+    {
+        flipDir = If[# === "In", "Out", "In"]&,
+        flipSide = If[# === Top, Bottom, Top]&,
+        centerF = Mean[{f2, F1}],
+        newSolutions
+    },
+
+    newSolutions = (
+        {side1, side2} // Replace[{
+            {Top, Top} :> (
+                mergeZerosF[
+                    mergeZerosF[
+                        quadSampling[{{f, f1}, {c, T}}],
+                        quadSampling[{{f1, centerF}, {c, T}}]
+                    ] // MapAt[Cases[KeyValuePattern[
+                        filpDir[dir1] -> {flipSide[side1], {_?(Between[{f1, f2}]), _, _}, _}
+                    ]], -1],
+                    mergeZerosF[
+                        quadSampling[{{centerF, F2}, {c, T}}],
+                        quadSampling[{{F2, F}, {c, T}}]
+                    ] // MapAt[Cases[KeyValuePattern[
+                        filpDir[dir2] -> {flipSide[side2], {_?(Between[{f1, f2}]), _, _}, _}
+                    ]], -1]
+                ] // Last
+            ),
+            {Bottom, Bottom} :> (
+                mergeZerosF[
+                    mergeZerosF[
+                        quadSampling[{{f, f1}, {t, c}}],
+                        quadSampling[{{f1, centerF}, {t, c}}]
+                    ] // MapAt[Cases[KeyValuePattern[
+                        filpDir[dir1] -> {flipSide[side1], {_?(Between[{f1, f2}]), _, _}, _}
+                    ]], -1],
+                    mergeZerosF[
+                        quadSampling[{{centerF, F2}, {t, c}}],
+                        quadSampling[{{F2, F}, {t, c}}]
+                    ] // MapAt[Cases[KeyValuePattern[
+                        filpDir[dir2] -> {flipSide[side2], {_?(Between[{f1, f2}]), _, _}, _}
+                    ]], -1]
+                ] // Last
+            ),
+            {Top, Bottom} :> (
+                Message[quadResampling::unhandledCase, {side1, side2}, {sol1, sol2}];
+                {}
+                (* mergeZerosT[
+                    mergeZerosF[
+                        quadSampling[{{f, centerF}, {t, c}}],
+                        mergeZerosF[
+                            quadSampling[{{centerF, F2}, {t, c}}],
+                            quadSampling[{{F2, F}, {t, c}}]
+                        ]
+                    ] // MapAt[Cases[KeyValuePattern[
+                        filpDir[dir2] -> {flipSide[side2], {_?(Between[{f1, f2}]), _, _}, _}
+                    ]], -1],
+                    mergeZerosF[
+                        mergeZerosF[
+                            quadSampling[{{f, f1}, {c, T}}],
+                            quadSampling[{{f1, centerF}, {c, T}}]
+                        ],
+                        quadSampling[{{centerF, F}, {c, T}}]
+                    ] // MapAt[Cases[KeyValuePattern[
+                        filpDir[dir1] -> {flipSide[side1], {_?(Between[{f1, f2}]), _, _}, _}
+                    ]], -1],
+                    "QuadSampling" -> quadSampling
+                ] *)
+            ),
+            {Bottom, Top} :> (
+                Message[quadResampling::unhandledCase, {side1, side2}, {sol1, sol2}];
+                {}
+                (* mergeZerosT[
+                    mergeZerosF[
+                        mergeZerosF[
+                            quadSampling[{{f, f1}, {t, c}}],
+                            quadSampling[{{f1, centerF}, {t, c}}]
+                        ],
+                        quadSampling[{{centerF, F}, {t, c}}]
+                    ] // MapAt[Cases[KeyValuePattern[
+                        filpDir[dir1] -> {flipSide[side1], {_?(Between[{f1, f2}]), _, _}, _}
+                    ]], -1],
+                    mergeZerosF[
+                        quadSampling[{{f, centerF}, {c, T}}],
+                        mergeZerosF[
+                            quadSampling[{{centerF, F2}, {c, T}}],
+                            quadSampling[{{F2, F}, {c, T}}]
+                        ]
+                    ] // MapAt[Cases[KeyValuePattern[
+                        filpDir[dir2] -> {flipSide[side2], {_?(Between[{f1, f2}]), _, _}, _}
+                    ]], -1],
+                    "QuadSampling" -> quadSampling
+                ] *)
+            )
+        }]
+    );
+
+    newSolution
+    // FirstCase[KeyValuePattern[{
+        flipDir[dir1] -> {flipSide[side1], {_?(Between[{f1, f2}]), _, _}, _},
+        flipDir[dir2] -> {flipSide[side2], {_?(Between[{F1, F2}]), _, _}, _}
+    }]]
+    (* Fallback to 2 separate solutions *)
+    // Replace[_?MissingQ :> (
+        newSolution
+        // {
+            FirstCase[KeyValuePattern[
+                "In" -> {flipSide[side1], {_?(Between[{f1, f2}]), _, _}, _}
+            ]],
+            FirstCase[KeyValuePattern[
+                "Out" -> {flipSide[side2], {_?(Between[{F1, F2}]), _, _}, _}
+            ]]
+        } // Through
+    )]
+    (* Fallback to linear interpolation *)
+    // Replace[{_?MissingQ, _?MissingQ} :> (
+        interpolateGap[sol1, sol2, InterpolationOrder -> 1]
+    )]
+]
+
+
+Options[interpolateGap] = {
+    InterpolationOrder -> 1
+}
+
+interpolateGap::order = "Unable to interpolate the gap between `1` and `2`: out point is larger than in point"
+
+interpolateGap[outSol_Association, inSol_Association, o:OptionsPattern[]] := With[
+    {
+        gapPoints := (
+            Subdivide[Part[outSol["Out"], 2, 1], Part[inSol["In"], 2, 1], 4]
+            // Take[#, {2, -2}]&
+        ),
+        gapFunction = (
+            Interpolation[{
+                outSol["InternalPoints"] // Last[#, Part[outSol["In"], 2, {1, 2}]]&,
+                Part[outSol["Out"], 2, {1, 2}],
+                Part[inSol["In"], 2, {1, 2}],
+                inSol["InternalPoints"] // First[#, Part[inSol["Out"], 2, {1, 2}]]&
+            }, o]
+        )
+    },
     <|
-        "In" -> (inSol["In"] // ReplacePart[1 -> Center]),
-        "Out" -> inSol["Out"],
-        "InternalPoints" -> Join[Part[inSol["In"], {2}], inSol["InternalPoints"]]
-    |>, {inSol, inSols}
+        "In" -> outSol["Out"],
+        "Out" -> inSol["In"],
+        "InternalPoints" -> (
+            If[Part[outSol["Out"], 2 ,1] > Part[inSol["In"], 2, 1],
+                Message[interpolateGap::order, Part[outSol["Out"], 2], Part[inSol["In"], 2]];
+                {},
+                Table[{p, gapFunction[p]}, {p, gapPoints}]
+            ]
+        )
+    |>
 ]
 
-mergeSols[_, {outSols:{__Association}, {}}] := Table[
+
+mergeSols[{{}, inSol_Association}] := (
+    inSol
+    // ReplacePart[{Key["In"], 1} -> Center]
+)
+
+mergeSols[{outSol_Association, {}}] := (
+    outSol
+    // ReplacePart[{Key["Out"], 1} -> Center]
+)
+
+mergeSols::mono = "Solutions is not monotonic";
+
+mergeSols[{outSol:KeyValuePattern["Out" -> {_, {outX_, outY_, outZ_}, _}],
+        inSol:KeyValuePattern["In" -> {_, {inX_, inY_, inZ_}, _}]}] := Block[
+    {
+        inPoint = Part[outSol, Key["In"], 2, {1, 2}],
+        outPoint = Part[inSol, Key["Out"], 2, {1, 2}]
+    },
     <|
         "In" -> outSol["In"],
-        "Out" -> (outSol["Out"] // ReplacePart[1 -> Center]),
-        "InternalPoints" -> Join[outSol["InternalPoints"], Part[outSol["Out"], {2}]]
-    |>, {outSol, outSols}
-]
-
-mergeSols[index_, {outSols:{__Association}, inSols:{__Association}}] := Table[
-    <|
-        "In" -> outSol["In"],
         "Out" -> inSol["Out"],
-        "InternalPoints" -> Join[
-            outSol["InternalPoints"],
-            Part[{outSol["Out"], inSol["In"]}, index, {2}],
-            inSol["InternalPoints"]
-        ]
-    |>, {outSol, outSols}, {inSol, inSols}
-] // Catenate
+        "InternalPoints" -> (
+            If[({Part[outSol, Key["In"], 1], Part[inSol, Key["Out"], 1]}
+                // MatchQ[{Top, Bottom}|{Bottom, Top}]) &&
+                EuclideanDistance[inPoint, outPoint] < (1*^-5 * Sqrt[2]),
+                (* Remove internal points if they are too crowded in a tiny region *)
+                {},
+                Join[
+                    outSol["InternalPoints"],
+                    {outX, inX}
+                    // Map[Between[{
+                        Last[outSol["InternalPoints"], inPoint] // First,
+                        Last[inSol["InternalPoints"], outPoint] // First
+                    }]]
+                    // Replace[{
+                        {True, True} :> (
+                            If[Abs[outZ] < Abs[inZ],
+                                {{outX, outY}},
+                                {{inX, inY}}
+                            ]
+                        ),
+                        {True, False} :> (
+                            {{outX, outY}}
+                        ),
+                        {False, True} :> (
+                            {{inX, inY}}
+                        ),
+                        _ :> (
+                            Echo[{outSol, inSol}, "Bad match"];
+                            Message[mergeSols::mono];
+                            Abort[];
+                        )
+                    }],
+                    inSol["InternalPoints"]
+                ]
+            ]
+        )
+    |>
+]
 
 
 FinalizeSol[KeyValuePattern[{
-    "In" -> {inDirection_, inPoint_, _},
-    "Out" -> {outDirection_, outPoint_, _},
+    "In" -> {_, inPoint_, _},
+    "Out" -> {_, outPoint_, _},
     "InternalPoints" -> sol_
 }]] := With[
     {
         points = Join[
-            If[inDirection === Center, {}, {inPoint}],
+            {Take[inPoint, 2]},
             sol,
-            If[outDirection === Center, {}, {outPoint}]
+            {Take[outPoint, 2]}
         ]
     },
 
@@ -2072,6 +2405,7 @@ FinalizeSol[KeyValuePattern[{
     // Position[True]
     // Delete[points, #]&
 ]
+
 
 End[]
 
