@@ -1529,7 +1529,7 @@ connectBoundaryZeros[actions_List] := Block[
     },
 
     realZeros = actions
-    // Cases[{"FindZero", findZeroFunction_}:> findZeroFunction[]];
+    // Cases[{"TakeZero", zero_} :> zero];
     fakeZeros = actions
     // Cases[{"TakeMinima", minima_}:> minima];
     (* // {}&; *)
@@ -1598,8 +1598,7 @@ connectBoundaryZeros[actions_List] := Block[
     // Map[FirstCase[{"Split", splitFunction_}:> splitFunction]]
     // Replace[{_?MissingQ, _?MissingQ} /; (
         actions
-        // Count[{"FindZero", _}]
-        // Positive
+        // MemberQ[{"TakeZero", _}]
     ):> (
         FirstCase[actions, {"SplitIfZeros", splitFunctions_} :> (
             splitFunctions
@@ -1732,30 +1731,43 @@ getBoundaryAction[goalFunctionGetter_, side:(Left|Bottom|Top|Right), points:{_Po
     If[(dropDiffs // Apply[Times]) <= 0,
         With[
             {
-                rangeConst = range,
-                fittingFunctionConst = fittingFunction,
                 zeroPoint = Part[points, 1, UnwrapPoint, {1, 2}],
                 runningIndex = 3 - fixedIndex
             },
-            {
-                "FindZero",
-                findZeros[fittingFunctionConst, rangeConst]&
-                /* MinimalBy[goalFunction]
-                /* Replace[{
-                    {root_, ___} :> {
-                        side,
-                        zeroPoint
-                        // ReplacePart[runningIndex -> root],
-                        rangeConst
-                    },
-                    {} -> Missing["NoZeros"]
-                }]
-            }
+            (* Echo[side];
+            Echo[fittingFunction];
+            Echo[range]; *)
+            findZeros[fittingFunction, range]
+            // Map[{#, goalFunction[#]}&]
+            // MinimalBy[Last]
+            // Replace[{
+                {{root_, delta_}, ___} :> (
+                    If[Abs[delta] < Min[targetDrop * $ZeroRatio, 1*^-5],
+                        {"TakeZero", {
+                            side,
+                            zeroPoint
+                            // ReplacePart[runningIndex -> root]
+                            // Append[delta],
+                            range
+                        }},
+                        (* Echo[delta, side];
+                        Echo[fittingFunction, "fittingFunction"]; *)
+                        {
+                            "Split",
+                            First
+                            /* ReplacePart[{UnwrapPoint, 3 - fixedIndex} -> root]
+                            /* ReplacePart[{UnwrapPoint, 3} -> delta]
+                        }
+                    ]
+                ),
+                {} -> {"DoNothing"}
+            }]
         ],
         (* {"DoNothing"}, *)
         With[
             {
-                dFittingFunction = D[fittingFunction[x], x]  // ReplaceAll[{x -> Slot[1]}],
+                dFittingFunction = D[fittingFunction[x], x] // ReplaceAll[{x -> Slot[1]}],
+                (* Pick the larger diff of boundary points *)
                 furtherDiff = MaximalBy[dropDiffs, Abs] // First
             },
 
@@ -1767,33 +1779,37 @@ getBoundaryAction[goalFunctionGetter_, side:(Left|Bottom|Top|Right), points:{_Po
             // MinimalBy[Last /* (# * furtherDiff&)]
             // First[#, {}]&
             // Replace[{
-                {splitPoint_, _?(# * furtherDiff& /* NonPositive)} :> {
+                {splitPoint_, splitDiff_?(# * furtherDiff& /* NonPositive)} :> {
                     "Split",
-                    First /* ReplacePart[{UnwrapPoint, 3 - fixedIndex} -> splitPoint]
+                    First
+                    /* ReplacePart[{UnwrapPoint, 3 - fixedIndex} -> splitPoint]
+                    /* ReplacePart[{UnwrapPoint, 3} -> splitDiff]
                 },
-                {minima_, _?(
+                {minima_, minimaDiff_?(
                     Abs
                     /* LessThan[
                         dropDiffs
                         // Append[targetDrop * $FakeZeroTolerance]
                         // Abs // Min
                     ]
-                )} :> {
+                )} :> (
                     (* {"DoNothing"} *)
-                    "SplitIfZeros",
-                    {
-                        First /* ReplacePart[{UnwrapPoint, 3 - fixedIndex} -> minima],
-                        Midpoint
-                    }
-                    // If[fixedIndex == 1, Identity, Reverse]
-                    (* "TakeMinima",
-                    {
-                        side,
-                        Part[points, 1, UnwrapPoint, {1, 2}]
-                        // ReplacePart[(3 - fixedIndex) -> minima],
-                        range
-                    } *)
-                },
+                    If[side // MatchQ[Bottom|Top], {
+                        "SplitIfZeros",
+                        First
+                        /* ReplacePart[{UnwrapPoint, 3 - fixedIndex} -> minima]
+                        /* ReplacePart[{UnwrapPoint, 3} -> minimaDiff]
+                    }, {
+                        "TakeMinima",
+                        {
+                            side,
+                            Part[points, 1, UnwrapPoint, {1, 2}]
+                            // ReplacePart[(3 - fixedIndex) -> minima]
+                            // Append[minimaDiff],
+                            range
+                        }
+                    }]
+                ),
                 _ -> {"DoNothing"}
             }]
         ]
