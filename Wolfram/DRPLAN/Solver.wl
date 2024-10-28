@@ -324,6 +324,10 @@ ToPlanSolution[node_DRNode, nodeSolution_NodeSolution] := (
 Unset[$NodeSolutionCallback] ^:= ($NodeSolutionCallback = #&;)
 Unset[$NodeSolutionCallback]
 
+
+$SowSampleList = False
+
+
 (*
     Options:
     - "Reevaluate":
@@ -344,7 +348,7 @@ Unset[$NodeSolutionCallback]
 Options[SolveNode] := {
     "Reevaluate" -> False,
     "AllCFlip" -> False,
-    "SowSampleList" -> False,
+    "SowSampleList" -> $SowSampleList,
     "Parallelize" -> False,
     "Overflip" -> False
 } ~Join~ Options[SolveDFlip]
@@ -440,13 +444,13 @@ SolveNode[node_DRNode, dFlip:(All | _List), o:OptionsPattern[]] := Module[
         (* Solve a flip *)
         {solutions, $sampleLists} = If[parallelize,
             ParallelTable[
-                Reap[SolveDFlip[nodeI, nodeSolution, FilterRules[{o}, Options[SolveDFlip]]]],
+                Reap[SolveDFlip[nodeI, nodeSolution, FilterRules[{o}, Options[SolveDFlip]]], "SampleList"],
                 {nodeSolution, nodeSolutions},
                 DistributedContexts -> {"DRPLAN`Core`", "DRPLAN`Solver`", "DRPLAN`Utility`", "DRPLAN`Thread`", "DataType`"},
                 Method -> "FinestGrained"
             ],
             Table[
-                Reap[SolveDFlip[nodeI, nodeSolution, FilterRules[{o}, Options[SolveDFlip]]]],
+                Reap[SolveDFlip[nodeI, nodeSolution, FilterRules[{o}, Options[SolveDFlip]]], "SampleList"],
                 {nodeSolution, nodeSolutions}
             ]
         ] // Replace[{
@@ -1039,7 +1043,7 @@ UniformSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1]
 scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][freeSample_Association] := Module[
     {
         solution, domain, tFlip, sampleNum,
-        refinedDomain, targetSamples,
+        targetDomain, targetSamples,
         sampleList, approxIntervals, targetRefinedSamples, refinedSampleList,
         threshold, zeroThreshold, zeroIntervals, approxZeros, interp, interpd, tmpZeros
     },
@@ -1047,21 +1051,13 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
     solution = Part[nodeSolution, 1];
     domain = Part[nodeSolution, 2];
     tFlip = Part[nodeSolution, 4];
+    targetDomain = domain[node["TargetCayley"]];
 
-    (* refine the domain use triangle inequalities *)
-    refinedDomain = (*t`$rd =*) RangeIntersection[
-        domain[node["TargetCayley"]],
-        refineInterval[node, node["TargetCayley"],
-            (* we require the target cayley parameter not appears in its prior vertices' solutions *)
-            (#[freeSample]&) /@ KeySelect[solution, (# < node["TargetCayley"]&)]
-        ]
-    ];
-    (* If[Head[refinedDomain] =!= Interval, Echo[t`rd]]; *)
-    If[(Max[#] - Min[#]&)[refinedDomain] <= ($MachineEpsilon * $SampleDivisor),
+    If[EuclideanDistance@@targetDomain <= ($MachineEpsilon * $SampleDivisor),
         Echo[freeSample,"Empty Refined Interval"]; Return[{}]
     ];
 
-    {sampleNum, targetSamples} = getSamples[refinedDomain, node["Root"]["PlanShortestEdge"]];
+    {sampleNum, targetSamples} = getSamples[targetDomain, node["Root"]["PlanShortestEdge"]];
     sampleList = (Replace[targetSample:Except[_Missing] :> (
         realizeNode[node, solution, tFlip,
             Append[freeSample, node["TargetCayley"] -> targetSample]
@@ -1110,34 +1106,6 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
     (* If[Length[ArrayRules[refinedSampleList]] > 1, Echo@sampleList];
     Return[] *)
 
-    (* sampleLists = sampleList; *)
-
-    (* To draw 3D points plot, uncomment the following line *)
-    If[$SowSampleList,
-        sampleList // ArrayRules // Most
-        // Cases[({pos_} -> Pair[targetSample_, dropDiff_]) :> Block[
-            {
-                cayleyLength = (Append[freeSample, node["TargetCayley"] -> targetSample])
-                    // (sampleAssoc \[Function] ((solution // Map[#[sampleAssoc]&])))
-            },
-            {
-                node["FreeCayley"]
-                // Replace[{
-                    {freeCayley_, ___} :> freeSample[freeCayley],
-                    _ -> targetSample
-                }],
-                cayleyLength,
-                dropDiff
-            }
-        ]]
-        // Sow
-    ];
-
-    (* If[MatchQ[sampleList, {_Real, _Real}],
-        Print[targets]
-    ]; *)
-
-
     With[
         {
             interpSampleList = List@@@Select[sampleList, Not@*MissingQ] (* DeleteMissing does not work for SparseArray *)
@@ -1181,8 +1149,29 @@ scanSamples[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1][fre
         Echo[Length[approxZeros], "Num of approximated zeros"];
     ]; *)
 
-    {#, interpd[#]}& /@ Sort[Join[tmpZeros, List@@@Part[sampleList, approxZeros, 1]]]
+    tmpZeros = Sort[Join[tmpZeros, List@@@Part[sampleList, approxZeros, 1]]];
 
+    If[$SowSampleList,
+        Rule[
+            sampleList // ArrayRules // Most
+            // Part[#, All, -1]&
+            (* Unwraps Pair *)
+            // Map[
+                Join[
+                    {First[node["FreeCayley"], Nothing]}
+                    // Map[freeSample],
+                    # // Apply[List]
+                ]&
+            ],
+            {First[node["FreeCayley"], Nothing]}
+            // Map[freeSample]
+            // (tmpZeros // Map[Append])
+            // Through
+        ]
+        // Sow[#, "SampleList"]&
+    ];
+
+    tmpZeros // Map[{Identity, interpd} /* Through]
 ]
 
 
@@ -1502,14 +1491,14 @@ KdTreeSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] 
                 quadSampling[{ft, fT, ct, cT}],
                 quadSampling[{ct, cT, Ft, FT}]
             ]
-            // (Sow[{ft, FT} -> #]; #)&
+            // (Sow[{ft, FT} -> #, "SampleList"]; #)&
         ),
         {False, True} :> (
             mergeZerosT[
                 quadSampling[{ft, fc, Ft, Fc}],
                 quadSampling[{fc, fT, Fc, FT}]
             ]
-            // (Sow[{ft, FT} -> #]; #)&
+            // (Sow[{ft, FT} -> #, "SampleList"]; #)&
         ),
         {True, True} :> (
             mergeZerosT[
@@ -1517,14 +1506,14 @@ KdTreeSampling[node_DRNode, nodeSolution_NodeSolution, dropOffset:_?NumericQ:1] 
                     quadSampling[{ft, fc, ct, cc}],
                     quadSampling[{ct, cc, Ft, Fc}]
                 ]
-                // (Sow[{ft, Fc} -> #]; #)&,
+                // (Sow[{ft, Fc} -> #, "SampleList"]; #)&,
                 mergeZerosF[
                     quadSampling[{fc, fT, cc, cT}],
                     quadSampling[{cc, cT, Fc, FT}]
                 ]
-                // (Sow[{fc, FT} -> #]; #)&
+                // (Sow[{fc, FT} -> #, "SampleList"]; #)&
             ]
-            // (Sow[{ft, FT} -> #]; #)&
+            // (Sow[{ft, FT} -> #, "SampleList"]; #)&
         )
     }]
 ]
@@ -1639,16 +1628,16 @@ connectBoundaryZeros[actions_List] := Block[
                     quadSampling[{ft, fc, ct, cc}],
                     quadSampling[{ct, cc, Ft, Fc}]
                 ]
-                // (Sow[{ft, Fc} -> #]; #)&,
+                // (Sow[{ft, Fc} -> #, "SampleList"]; #)&,
                 mergeZerosF[
                     quadSampling[{fc, fT, cc, cT}],
                     quadSampling[{cc, cT, Fc, FT}]
                 ]
-                // (Sow[{fc, FT} -> #]; #)&
+                // (Sow[{fc, FT} -> #, "SampleList"]; #)&
             ]
         )
     }]
-    // (Sow[{ft, FT} -> #]; #)&
+    // (Sow[{ft, FT} -> #, "SampleList"]; #)&
 ]
 
 
@@ -1678,6 +1667,9 @@ getGoalFunction[node_DRNode, solution_Association, tFlip_Association][
         err_ :> (Echo[err, "Unknown Result"]; Abort[])
     }]
 ]
+SowSampleList := (
+    If[$SowSampleList, ((*AppendTo[t`SampleList, #];*) Sow[#, "SampleList"])&, Identity]
+)
 
 
 fitGoalFunction[goalFunction_, {min_, max_}] := Block[
