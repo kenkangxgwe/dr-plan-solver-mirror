@@ -1531,10 +1531,16 @@ connectBoundaryZeros[actions_List] := Block[
     realZeros = actions
     // Cases[{"FindZero", findZeroFunction_}:> findZeroFunction[]];
     fakeZeros = actions
-    // Cases[{"TakeMinima", minima_}:> minima]
-    // {}&;
+    // Cases[{"TakeMinima", minima_}:> minima];
+    (* // {}&; *)
 
-    Subsets[Join[realZeros, fakeZeros], {2}]
+    Join[
+        Outer[List, realZeros, fakeZeros]
+        // Catenate
+        // ReplacePart[{_, _, 1} -> Center],
+        Subsets[realZeros, {2}]
+    ]
+    (* Subsets[Join[realZeros, fakeZeros], {2}] *)
     // Cases[{in:{_, inZero_, _}, out:{_, outZero_, _}} :> (
         {in, out}
         // If[First[inZero] > First[outZero],
@@ -1542,17 +1548,27 @@ connectBoundaryZeros[actions_List] := Block[
             Identity
         ]
     )]
-    // Replace[{} :> (
-        Subsets[fakeZeros, {1}]
+    (*
+        If the zeros are at Top or Bottom, make sure the ranges of each zeros
+        are montonic:
+        inRangeMin < inX <= inRangeMax <= outRangeMin <= outX < outRangeMax
+    *)
+    // Replace[#, {in:{(Top|Bottom), {inX_, __}, {_, inRangeMax_}},
+            out:{(Top|Bottom), {outX_, __}, {outRangeMin_, _}}} :> {
+        in // ReplacePart[{-1, 1} -> Min[{inRangeMax, outX}]],
+        out // ReplacePart[{-1, 1} -> Max[{outRangeMin, inX}]]
+    }, {1}]&
+    (* // Replace[{} :> (
+        fakeZeros
         // Cases[zero:{side_, _, _} :> (
-            {zero, zero // Replace[1 -> Center]}
+            {zero, zero // ReplacePart[1 -> Center]}
             // {
                 If[side =!= Right, Identity, Nothing],
                 If[side =!= Left, Reverse, Nothing]
             } // Through
         )]
         // Catenate
-    )]
+    )] *)
     // Map[Apply[<|"In" -> #1, "Out" -> #2, "InternalPoints" -> {}|>&]]
 ]
 
